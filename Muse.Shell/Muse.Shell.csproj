@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Muse.Editor.Core\Muse.Editor.Core.csproj" />
+    <ProjectReference Include="..\Muse.Editor.Rendering\Muse.Editor.Rendering.csproj" />
+    <ProjectReference Include="..\Muse.Workspace\Muse.Workspace.csproj" />
+    <ProjectReference Include="..\Muse.Assets\Muse.Assets.csproj" />
+    <ProjectReference Include="..\Muse.Export\Muse.Export.csproj" />
+    <ProjectReference Include="..\Muse.ThemeUX\Muse.ThemeUX.csproj" />
+    <ProjectReference Include="..\Muse.AI.RAG\Muse.AI.RAG.csproj" />
+  </ItemGroup>
+</Project>
