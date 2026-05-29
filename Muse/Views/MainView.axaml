@@ -1,16 +1,93 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Muse.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Muse.Views.MainView"
-             x:DataType="vm:MainViewModel">
-  <Design.DataContext>
-    <!-- This only sets the DataContext for the previewer in an IDE,
-         to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-    <vm:MainViewModel />
-  </Design.DataContext>
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+			 xmlns:vm="using:Muse.ViewModels"
+			 mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+			 x:Class="Muse.Views.MainView"
+			 x:DataType="vm:MainViewModel">
+	<Design.DataContext>
+		<!-- This only sets the DataContext for the previewer in an IDE,
+		to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+		<vm:MainViewModel />
+	</Design.DataContext>
 
-  <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+	<DockPanel Margin="16" LastChildFill="True">
+		<Border DockPanel.Dock="Top"
+				Padding="12"
+				CornerRadius="12"
+				Background="#14FFFFFF"
+				BorderBrush="#33FFFFFF"
+				BorderThickness="1"
+				Margin="0,0,0,12">
+			<StackPanel Spacing="8">
+				<TextBlock Text="{Binding HeaderText}" FontSize="16" FontWeight="SemiBold" />
+				<WrapPanel ItemHeight="32" ItemWidth="120">
+					<Button Content="编辑模式" Command="{Binding SwitchToEditModeCommand}" />
+					<Button Content="分屏模式" Command="{Binding SwitchToSplitModeCommand}" />
+					<Button Content="阅读模式" Command="{Binding SwitchToReadModeCommand}" />
+					<Button Content="切换分屏方向"
+							Command="{Binding ToggleSplitOrientationCommand}"
+							IsEnabled="{Binding IsSplitMode}" />
+				</WrapPanel>
+			</StackPanel>
+		</Border>
+
+		<Grid>
+			<Border IsVisible="{Binding IsEditMode}"
+					Padding="16"
+					CornerRadius="12"
+					Background="#0FFFFFFF"
+					BorderBrush="#2FFFFFFF"
+					BorderThickness="1">
+				<StackPanel Spacing="12">
+					<TextBlock Text="编辑模式：所见即所得（骨架）" FontSize="14" FontWeight="SemiBold" />
+					<TextBox Height="220"
+							 AcceptsReturn="True"
+							 Watermark="在这里输入 Markdown（后续接入渲染引擎）" />
+				</StackPanel>
+			</Border>
+
+			<StackPanel IsVisible="{Binding IsSplitMode}" Spacing="8">
+				<TextBlock Text="分屏模式：源码 + 预览（骨架）" FontSize="14" FontWeight="SemiBold" />
+
+				<Grid IsVisible="{Binding IsSplitHorizontal}" ColumnDefinitions="*,8,*" Height="260">
+					<Border Grid.Column="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+						<TextBox AcceptsReturn="True" Watermark="左侧源码区（占位）" />
+					</Border>
+					<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+						<ScrollViewer>
+							<TextBlock TextWrapping="Wrap" Text="右侧预览区（占位）" />
+						</ScrollViewer>
+					</Border>
+				</Grid>
+
+				<Grid IsVisible="{Binding IsSplitVertical}" RowDefinitions="*,8,*" Height="300">
+					<Border Grid.Row="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+						<TextBox AcceptsReturn="True" Watermark="上方源码区（占位）" />
+					</Border>
+					<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+						<ScrollViewer>
+							<TextBlock TextWrapping="Wrap" Text="下方预览区（占位）" />
+						</ScrollViewer>
+					</Border>
+				</Grid>
+			</StackPanel>
+
+			<Border IsVisible="{Binding IsReadMode}"
+					Padding="16"
+					CornerRadius="12"
+					Background="#0FFFFFFF"
+					BorderBrush="#2FFFFFFF"
+					BorderThickness="1">
+				<StackPanel Spacing="12">
+					<TextBlock Text="阅读模式：只读渲染（骨架）" FontSize="14" FontWeight="SemiBold" />
+					<ScrollViewer Height="220">
+						<TextBlock TextWrapping="Wrap"
+								   Text="这里显示阅读视图内容。后续接入渲染结果映射与目录联动。" />
+					</ScrollViewer>
+				</StackPanel>
+			</Border>
+		</Grid>
+	</DockPanel>
 </UserControl>
