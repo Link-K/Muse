@@ -44,31 +44,39 @@
 					<TextBlock Text="编辑模式：所见即所得（骨架）" FontSize="14" FontWeight="SemiBold" />
 					<TextBox Height="220"
 							 AcceptsReturn="True"
+							 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
 							 Watermark="在这里输入 Markdown（后续接入渲染引擎）" />
 				</StackPanel>
 			</Border>
 
 			<StackPanel IsVisible="{Binding IsSplitMode}" Spacing="8">
 				<TextBlock Text="分屏模式：源码 + 预览（骨架）" FontSize="14" FontWeight="SemiBold" />
+				<TextBlock Text="{Binding SplitOrientationText}" Opacity="0.85" />
 
 				<Grid IsVisible="{Binding IsSplitHorizontal}" ColumnDefinitions="*,8,*" Height="260">
 					<Border Grid.Column="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-						<TextBox AcceptsReturn="True" Watermark="左侧源码区（占位）" />
+						<TextBox AcceptsReturn="True"
+								 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+								 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
+								 Watermark="左侧源码区（占位）" />
 					</Border>
 					<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 						<ScrollViewer>
-							<TextBlock TextWrapping="Wrap" Text="右侧预览区（占位）" />
+							<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
 						</ScrollViewer>
 					</Border>
 				</Grid>
 
 				<Grid IsVisible="{Binding IsSplitVertical}" RowDefinitions="*,8,*" Height="300">
 					<Border Grid.Row="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-						<TextBox AcceptsReturn="True" Watermark="上方源码区（占位）" />
+						<TextBox AcceptsReturn="True"
+								 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+								 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
+								 Watermark="上方源码区（占位）" />
 					</Border>
 					<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 						<ScrollViewer>
-							<TextBlock TextWrapping="Wrap" Text="下方预览区（占位）" />
+							<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
 						</ScrollViewer>
 					</Border>
 				</Grid>
@@ -83,8 +91,7 @@
 				<StackPanel Spacing="12">
 					<TextBlock Text="阅读模式：只读渲染（骨架）" FontSize="14" FontWeight="SemiBold" />
 					<ScrollViewer Height="220">
-						<TextBlock TextWrapping="Wrap"
-								   Text="这里显示阅读视图内容。后续接入渲染结果映射与目录联动。" />
+						<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
 					</ScrollViewer>
 				</StackPanel>
 			</Border>

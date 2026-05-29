@@ -11,6 +11,12 @@ public partial class MainViewModel : ViewModelBase
 	[ObservableProperty]
 	private SplitOrientation _currentSplitOrientation = SplitOrientation.Horizontal;
 
+	[ObservableProperty]
+	private string _markdownDraft = "# Muse\n\n在这里开始写 Markdown。";
+
+	[ObservableProperty]
+	private int _splitSourceCaretIndex;
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -27,6 +33,14 @@ public partial class MainViewModel : ViewModelBase
 	public bool IsSplitHorizontal => CurrentSplitOrientation == SplitOrientation.Horizontal;
 
 	public bool IsSplitVertical => CurrentSplitOrientation == SplitOrientation.Vertical;
+
+	public string SplitOrientationText => CurrentSplitOrientation == SplitOrientation.Horizontal
+		? "当前分屏：左右"
+		: "当前分屏：上下";
+
+	public string PreviewPlaceholder => string.IsNullOrWhiteSpace(MarkdownDraft)
+		? "预览区（占位）：当前无内容"
+		: MarkdownDraft;
 
 	[RelayCommand]
 	private void SwitchToEditMode()
@@ -66,6 +80,12 @@ public partial class MainViewModel : ViewModelBase
 	{
 		OnPropertyChanged(nameof(IsSplitHorizontal));
 		OnPropertyChanged(nameof(IsSplitVertical));
+		OnPropertyChanged(nameof(SplitOrientationText));
+	}
+
+	partial void OnMarkdownDraftChanged(string value)
+	{
+		OnPropertyChanged(nameof(PreviewPlaceholder));
 	}
 }
 
