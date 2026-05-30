@@ -174,6 +174,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	[ObservableProperty]
 	private bool _isDebugTelemetryExpanded;
 
+	[ObservableProperty]
+	private string? _conflictLogPreferenceSaveErrorMessage;
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -242,6 +245,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	public bool CanResetConflictLogFilters => !IsConflictLogFilteredToActiveDocument || SelectedConflictEventFilter != ConflictEventFilter.All;
 
 	public bool ShowExpandedConflictLogPanel => IsConflictLogExpanded && HasRecentConflictEvents;
+
+	public bool HasConflictLogPreferenceSaveError => !string.IsNullOrWhiteSpace(ConflictLogPreferenceSaveErrorMessage);
 
 	public bool IsDebugTelemetryAvailable
 	{
@@ -463,6 +468,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		OnPropertyChanged(nameof(DebugConflictLogFlushSummary));
 	}
 
+	[RelayCommand]
+	private void RetryConflictLogPreferenceSave()
+	{
+		if (!_enableConflictLogPreferencePersistence)
+		{
+			return;
+		}
+
+		lock (_conflictLogPreferenceSaveLock)
+		{
+			_hasPendingConflictLogPreferenceSave = true;
+		}
+
+		FlushConflictLogPreferencesNow();
+	}
+
 	partial void OnCurrentModeChanged(EditorMode value)
 	{
 		OnPropertyChanged(nameof(HeaderText));
@@ -531,6 +552,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	{
 		OnPropertyChanged(nameof(DebugTelemetryToggleText));
 		OnPropertyChanged(nameof(ShowDebugTelemetryPanel));
+	}
+
+	partial void OnConflictLogPreferenceSaveErrorMessageChanged(string? value)
+	{
+		OnPropertyChanged(nameof(HasConflictLogPreferenceSaveError));
 	}
 
 	partial void OnIsConflictLogFilteredToActiveDocumentChanged(bool value)
@@ -997,6 +1023,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			{
 				_lastConflictLogPreferenceWriteAt = DateTimeOffset.UtcNow;
 			}
+			ClearConflictLogPreferenceSaveError();
 			WriteDebugLog($"[ConflictLogPref] Flush success (force={force}) -> {settingsPath}");
 		}
 		catch (Exception ex)
@@ -1006,9 +1033,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			Interlocked.Increment(ref _debugConflictLogFlushFailureCount);
 			_debugLastConflictLogFlushError = ex.Message;
 #endif
+			SetConflictLogPreferenceSaveError($"偏好保存失败：{ex.Message}");
 			WriteDebugLog($"[ConflictLogPref] Flush failed: {ex.Message}");
 			// Ignore preference persistence failures; this should not block core editing.
 		}
+	}
+
+	private void SetConflictLogPreferenceSaveError(string message)
+	{
+		ConflictLogPreferenceSaveErrorMessage = message;
+	}
+
+	private void ClearConflictLogPreferenceSaveError()
+	{
+		ConflictLogPreferenceSaveErrorMessage = null;
 	}
 
 	[Conditional("DEBUG")]

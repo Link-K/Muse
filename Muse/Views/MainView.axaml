@@ -68,6 +68,16 @@
 						   Text="{Binding ConflictEventFilterText}"
 						   Foreground="#605E5C"
 						   FontSize="12" />
+				<WrapPanel IsVisible="{Binding HasConflictLogPreferenceSaveError}" ItemHeight="30" ItemWidth="180">
+					<TextBlock Text="{Binding ConflictLogPreferenceSaveErrorMessage}"
+							   Foreground="#D13438"
+							   FontSize="12"
+							   VerticalAlignment="Center" />
+					<Button Content="重试保存偏好"
+							Command="{Binding RetryConflictLogPreferenceSaveCommand}"
+							HorizontalAlignment="Left"
+							Padding="10,4" />
+				</WrapPanel>
 				<Button IsVisible="{Binding HasRecentConflictEvents}"
 						Content="{Binding ConflictLogToggleText}"
 						Command="{Binding ToggleConflictLogExpandedCommand}"

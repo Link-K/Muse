@@ -494,6 +494,46 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		}
 	}
 
+	[Fact]
+	public void ConflictLogPreferenceSaveFailure_ShouldShowErrorAndRetryShouldClearAfterRecovery()
+	{
+		var preview = new FakePreviewService();
+		var goodRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-Recover-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(goodRoot);
+		var badRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-*Invalid");
+
+		try
+		{
+			var badState = new WorkspaceState(
+				badRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(goodRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+			var goodState = badState with { WorkspaceRoot = goodRoot.Replace('\\', '/') };
+
+			var workspace = new FakeWorkspaceService(badState, goodState);
+			var viewModel = new MainViewModel(preview, workspace, true);
+
+			viewModel.ToggleConflictLogScopeCommand.Execute(null);
+			viewModel.FlushConflictLogPreferencesNow();
+
+			Assert.True(viewModel.HasConflictLogPreferenceSaveError);
+			Assert.Contains("偏好保存失败", viewModel.ConflictLogPreferenceSaveErrorMessage);
+
+			viewModel.OpenCurrentWorkspaceCommand.Execute(null);
+			viewModel.RetryConflictLogPreferenceSaveCommand.Execute(null);
+
+			Assert.False(viewModel.HasConflictLogPreferenceSaveError);
+		}
+		finally
+		{
+			if (Directory.Exists(goodRoot))
+			{
+				Directory.Delete(goodRoot, true);
+			}
+		}
+	}
+
 	private static bool WaitForConflictLogPreferences(string settingsPath, bool expectedScope, string expectedFilter, int timeoutMs = 5000)
 	{
 		var sw = Stopwatch.StartNew();
