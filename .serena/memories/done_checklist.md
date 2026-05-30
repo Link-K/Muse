@@ -1,0 +1,5 @@
+- 完成任务后至少执行：dotnet build Muse.sln。
+- 功能改动必须跑对应模块测试；Rendering/Core 改动跑其测试项目。
+- 运行 scripts/Invoke-QualityGate.ps1 作为本地门禁。
+- 同步更新 files/ 下实施计划、架构文档与必要任务卡状态。
+- 记录风险、回滚方案与影响范围。

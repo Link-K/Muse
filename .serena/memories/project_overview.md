@@ -1,0 +1,4 @@
+- 项目目标：跨平台 Avalonia Markdown 编辑器（对齐 Typora 的所见即所得体验）。
+- 技术栈：.NET 10、C#、Avalonia 11.3.9、CommunityToolkit.Mvvm、xUnit。
+- 解决方案结构：宿主(Muse + Desktop/Browser/iOS/Android) + 模块化库（Editor.Core/Rendering/Workspace/Assets/Export/ThemeUX/AI.RAG/Shell）+ 独立测试工程。
+- 研发约束：高内聚低耦合、先契约后实现、先测试后编码、文档统一在 files/。

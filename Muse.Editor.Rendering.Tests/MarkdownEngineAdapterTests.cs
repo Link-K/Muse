@@ -48,6 +48,21 @@ public sealed class MarkdownEngineAdapterTests
 		Assert.Single(telemetry.Diagnostics);
 	}
 
+	[Fact]
+	public void Render_ShouldClassifyOrderedListAndTildeCodeFence()
+	{
+		const string markdown = "1. first\n2. second\n~~~js\nconsole.log(1);\n~~~";
+		var adapter = new MarkdownEngineAdapter();
+
+		var result = adapter.Render(new RenderRequest(markdown, RenderingMode.Edit));
+
+		Assert.True(result.Succeeded);
+		Assert.Contains(result.Blocks, block => block.Kind == RenderedBlockKind.ListItem && block.Content == "first");
+		Assert.Contains(result.Blocks, block => block.Kind == RenderedBlockKind.ListItem && block.Content == "second");
+		Assert.Contains(result.Blocks, block => block.Kind == RenderedBlockKind.CodeFence && block.Source.Trim() == "~~~js");
+		Assert.Contains(result.Blocks, block => block.Kind == RenderedBlockKind.CodeFence && block.Source.Trim() == "~~~");
+	}
+
 	private sealed class ThrowingParser : IMarkdownBlockParser
 	{
 		public IReadOnlyList<RenderedBlock> Parse(RenderRequest request)

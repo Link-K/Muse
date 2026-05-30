@@ -1,0 +1,8 @@
+- 构建解决方案：dotnet build Muse.sln
+- 发布：dotnet publish Muse.sln
+- 运行桌面：dotnet run --project Muse.Desktop/Muse.Desktop.csproj
+- 运行浏览器：dotnet run --project Muse.Browser/Muse.Browser.csproj
+- 运行测试：dotnet test Muse.Editor.Core.Tests/Muse.Editor.Core.Tests.csproj ; dotnet test Muse.Editor.Rendering.Tests/Muse.Editor.Rendering.Tests.csproj
+- 架构边界检查（PowerShell）：scripts/Test-ArchitectureBoundaries.ps1
+- 本地质量门禁（PowerShell）：scripts/Invoke-QualityGate.ps1
+- Windows 常用：Get-ChildItem, Get-Content, Select-String, git status, git diff

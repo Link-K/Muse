@@ -1,0 +1,5 @@
+- C# 启用 Nullable 与 ImplicitUsings。
+- 命名遵循语义化：类型/方法 PascalCase，私有字段 _camelCase。
+- 模块边界严格：UI 不直连底层实现，跨模块经契约与适配层。
+- 代码风格：小方法、单一职责、避免魔法字符串、避免跨层耦合。
+- 测试约定：xUnit，测试名使用 Should/When 风格，覆盖成功与失败路径。
