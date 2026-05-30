@@ -166,6 +166,8 @@ public partial class MainViewModel : ViewModelBase
 		_ => "事件类型：全部"
 	};
 
+	public bool CanResetConflictLogFilters => !IsConflictLogFilteredToActiveDocument || SelectedConflictEventFilter != ConflictEventFilter.All;
+
 	public bool ShowExpandedConflictLogPanel => IsConflictLogExpanded && HasRecentConflictEvents;
 
 	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
@@ -336,6 +338,28 @@ public partial class MainViewModel : ViewModelBase
 		RefreshConflictEventPresentation();
 	}
 
+	[RelayCommand]
+	private void ResetConflictLogFilters()
+	{
+		var changed = false;
+		if (!IsConflictLogFilteredToActiveDocument)
+		{
+			IsConflictLogFilteredToActiveDocument = true;
+			changed = true;
+		}
+
+		if (SelectedConflictEventFilter != ConflictEventFilter.All)
+		{
+			SelectedConflictEventFilter = ConflictEventFilter.All;
+			changed = true;
+		}
+
+		if (changed)
+		{
+			RefreshConflictEventPresentation();
+		}
+	}
+
 	partial void OnCurrentModeChanged(EditorMode value)
 	{
 		OnPropertyChanged(nameof(HeaderText));
@@ -404,6 +428,7 @@ public partial class MainViewModel : ViewModelBase
 	{
 		OnPropertyChanged(nameof(ConflictLogScopeToggleText));
 		OnPropertyChanged(nameof(ConflictLogScopeText));
+		OnPropertyChanged(nameof(CanResetConflictLogFilters));
 	}
 
 	partial void OnAvailableConflictEventCountChanged(int value)
@@ -415,6 +440,7 @@ public partial class MainViewModel : ViewModelBase
 	{
 		OnPropertyChanged(nameof(ConflictEventFilterToggleText));
 		OnPropertyChanged(nameof(ConflictEventFilterText));
+		OnPropertyChanged(nameof(CanResetConflictLogFilters));
 	}
 
 	partial void OnSaveFeedbackIsErrorChanged(bool value)

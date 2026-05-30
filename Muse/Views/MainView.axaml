@@ -54,6 +54,11 @@
 							Command="{Binding CycleConflictEventFilterCommand}"
 							HorizontalAlignment="Left"
 							Padding="10,4" />
+					<Button Content="重置筛选"
+							Command="{Binding ResetConflictLogFiltersCommand}"
+							IsEnabled="{Binding CanResetConflictLogFilters}"
+							HorizontalAlignment="Left"
+							Padding="10,4" />
 				</WrapPanel>
 				<TextBlock IsVisible="{Binding HasAnyConflictEvents}"
 						   Text="{Binding ConflictLogScopeText}"
