@@ -45,6 +45,25 @@
 				<TextBlock IsVisible="{Binding HasLatestConflictEvent}"
 						   Text="{Binding LatestConflictEventMessage}"
 						   Foreground="#605E5C" FontSize="12" />
+				<Button IsVisible="{Binding HasRecentConflictEvents}"
+						Content="{Binding ConflictLogToggleText}"
+						Command="{Binding ToggleConflictLogExpandedCommand}"
+						HorizontalAlignment="Left"
+						Padding="10,4" />
+				<Border IsVisible="{Binding ShowExpandedConflictLogPanel}"
+						Padding="8"
+						CornerRadius="8"
+						Background="#08FFFFFF"
+						BorderBrush="#22FFFFFF"
+						BorderThickness="1">
+					<ItemsControl ItemsSource="{Binding RecentConflictEventMessages}">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,2" />
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</Border>
 				<WrapPanel IsVisible="{Binding HasActiveDocumentConflict}" ItemHeight="32" ItemWidth="180">
 					<Button Content="保留本地并覆盖保存"
 							Command="{Binding ResolveConflictBySavingLocalCommand}"

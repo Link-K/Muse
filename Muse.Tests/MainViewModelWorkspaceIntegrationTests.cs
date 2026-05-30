@@ -147,6 +147,36 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Equal("已丢弃本地并重载外部", viewModel.LastSaveStatus);
 	}
 
+	[Fact]
+	public void WorkspaceChangedEvent_ShouldExposeRecentConflictEventsAndSupportExpandToggle()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", true, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "detected_external_change", "检测到外部文件变更，当前草稿尚未同步。", DateTimeOffset.UtcNow.AddMinutes(-6)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "resolved_save_local", "已保留本地并覆盖保存外部文件。", DateTimeOffset.UtcNow.AddMinutes(-5)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "detected_external_change", "检测到外部文件变更，当前草稿尚未同步。", DateTimeOffset.UtcNow.AddMinutes(-4)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "resolved_reload_external", "已丢弃本地并重载外部文件内容。", DateTimeOffset.UtcNow.AddMinutes(-3)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "detected_external_change", "检测到外部文件变更，当前草稿尚未同步。", DateTimeOffset.UtcNow.AddMinutes(-2)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "resolved_save_local", "已保留本地并覆盖保存外部文件。", DateTimeOffset.UtcNow.AddMinutes(-1)));
+		var viewModel = new MainViewModel(preview, workspace);
+
+		workspace.RaiseWorkspaceChanged();
+
+		Assert.True(viewModel.HasRecentConflictEvents);
+		Assert.Equal(5, viewModel.RecentConflictEventMessages.Length);
+		Assert.False(viewModel.ShowExpandedConflictLogPanel);
+
+		viewModel.ToggleConflictLogExpandedCommand.Execute(null);
+
+		Assert.True(viewModel.ShowExpandedConflictLogPanel);
+		Assert.Equal("收起最近冲突日志", viewModel.ConflictLogToggleText);
+	}
+
 	private sealed class FakePreviewService : IMarkdownPreviewService
 	{
 		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)

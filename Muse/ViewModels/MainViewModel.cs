@@ -80,6 +80,12 @@ public partial class MainViewModel : ViewModelBase
 	[ObservableProperty]
 	private string? _latestConflictEventMessage;
 
+	[ObservableProperty]
+	private string[] _recentConflictEventMessages = [];
+
+	[ObservableProperty]
+	private bool _isConflictLogExpanded;
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -112,6 +118,14 @@ public partial class MainViewModel : ViewModelBase
 	public bool HasActiveDocumentConflict => ActiveDocumentHasExternalConflict;
 
 	public bool HasLatestConflictEvent => !string.IsNullOrWhiteSpace(LatestConflictEventMessage);
+
+	public bool HasRecentConflictEvents => RecentConflictEventMessages.Length > 0;
+
+	public string ConflictLogToggleText => IsConflictLogExpanded
+		? "收起最近冲突日志"
+		: $"展开最近冲突日志（{RecentConflictEventMessages.Length}）";
+
+	public bool ShowExpandedConflictLogPanel => IsConflictLogExpanded && HasRecentConflictEvents;
 
 	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
 
@@ -255,6 +269,12 @@ public partial class MainViewModel : ViewModelBase
 		SaveFeedbackMessage = "已重载外部文件内容。";
 	}
 
+	[RelayCommand]
+	private void ToggleConflictLogExpanded()
+	{
+		IsConflictLogExpanded = !IsConflictLogExpanded;
+	}
+
 	partial void OnCurrentModeChanged(EditorMode value)
 	{
 		OnPropertyChanged(nameof(HeaderText));
@@ -297,6 +317,19 @@ public partial class MainViewModel : ViewModelBase
 	partial void OnLatestConflictEventMessageChanged(string? value)
 	{
 		OnPropertyChanged(nameof(HasLatestConflictEvent));
+	}
+
+	partial void OnRecentConflictEventMessagesChanged(string[] value)
+	{
+		OnPropertyChanged(nameof(HasRecentConflictEvents));
+		OnPropertyChanged(nameof(ConflictLogToggleText));
+		OnPropertyChanged(nameof(ShowExpandedConflictLogPanel));
+	}
+
+	partial void OnIsConflictLogExpandedChanged(bool value)
+	{
+		OnPropertyChanged(nameof(ConflictLogToggleText));
+		OnPropertyChanged(nameof(ShowExpandedConflictLogPanel));
 	}
 
 	partial void OnSaveFeedbackIsErrorChanged(bool value)
@@ -418,10 +451,7 @@ public partial class MainViewModel : ViewModelBase
 	private void HandleWorkspaceChanged(object? sender, EventArgs e)
 	{
 		SyncWorkspaceState();
-		var latestConflictEvent = _workspaceService.GetConflictEvents().LastOrDefault();
-		LatestConflictEventMessage = latestConflictEvent is null
-			? null
-			: $"冲突日志：{latestConflictEvent.Message}（{latestConflictEvent.OccurredAt.ToLocalTime():HH:mm:ss}）";
+		RefreshConflictEventPresentation();
 
 		var state = _workspaceService.GetState();
 		var activeTab = state.OpenTabs.FirstOrDefault(tab => tab.DocumentId == state.ActiveDocumentId);
@@ -460,6 +490,28 @@ public partial class MainViewModel : ViewModelBase
 		finally
 		{
 			_isHydratingDraft = false;
+		}
+	}
+
+	private void RefreshConflictEventPresentation()
+	{
+		var recentEvents = _workspaceService
+			.GetConflictEvents()
+			.OrderByDescending(item => item.OccurredAt)
+			.Take(5)
+			.ToArray();
+
+		LatestConflictEventMessage = recentEvents.Length == 0
+			? null
+			: $"冲突日志：{recentEvents[0].Message}（{recentEvents[0].OccurredAt.ToLocalTime():HH:mm:ss}）";
+
+		RecentConflictEventMessages = recentEvents
+			.Select(item => $"[{item.OccurredAt.ToLocalTime():HH:mm:ss}] {item.Message}")
+			.ToArray();
+
+		if (recentEvents.Length == 0)
+		{
+			IsConflictLogExpanded = false;
 		}
 	}
 
