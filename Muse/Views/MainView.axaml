@@ -68,16 +68,32 @@
 						   Text="{Binding ConflictEventFilterText}"
 						   Foreground="#605E5C"
 						   FontSize="12" />
-				<WrapPanel IsVisible="{Binding HasConflictLogPreferenceSaveError}" ItemHeight="30" ItemWidth="180">
-					<TextBlock Text="{Binding ConflictLogPreferenceSaveErrorMessage}"
-							   Foreground="#D13438"
-							   FontSize="12"
-							   VerticalAlignment="Center" />
-					<Button Content="重试保存偏好"
-							Command="{Binding RetryConflictLogPreferenceSaveCommand}"
-							HorizontalAlignment="Left"
-							Padding="10,4" />
-				</WrapPanel>
+				<Border IsVisible="{Binding HasConflictLogPreferenceSaveError}"
+						Padding="8"
+						CornerRadius="8"
+						Background="#14D13438"
+						BorderBrush="#22D13438"
+						BorderThickness="1">
+					<StackPanel Spacing="6">
+						<StackPanel Orientation="Horizontal" Spacing="8">
+							<TextBlock Text="偏好保存失败" Foreground="#D13438" VerticalAlignment="Center" FontSize="12" />
+							<Button Content="{Binding ConflictLogPreferenceErrorToggleText}"
+									Command="{Binding ToggleConflictLogPreferenceSaveErrorExpandedCommand}"
+									Padding="8,4" />
+							<Button Content="复制错误详情"
+									Click="OnCopyErrorDetailsClick"
+									Padding="8,4" />
+							<Button Content="重试保存偏好"
+									Command="{Binding RetryConflictLogPreferenceSaveCommand}"
+									Padding="8,4" />
+						</StackPanel>
+						<TextBlock IsVisible="{Binding IsConflictLogPreferenceSaveErrorExpanded}"
+								   Text="{Binding ConflictLogPreferenceSaveErrorMessage}"
+								   Foreground="#D13438"
+								   FontSize="12"
+								   TextWrapping="Wrap" />
+					</StackPanel>
+				</Border>
 				<Button IsVisible="{Binding HasRecentConflictEvents}"
 						Content="{Binding ConflictLogToggleText}"
 						Command="{Binding ToggleConflictLogExpandedCommand}"

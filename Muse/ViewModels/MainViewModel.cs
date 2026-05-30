@@ -177,6 +177,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	[ObservableProperty]
 	private string? _conflictLogPreferenceSaveErrorMessage;
 
+	[ObservableProperty]
+	private bool _isConflictLogPreferenceSaveErrorExpanded;
+
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -259,6 +263,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 #endif
 		}
 	}
+
+	public string ConflictLogPreferenceErrorToggleText => IsConflictLogPreferenceSaveErrorExpanded ? "隐藏错误详情" : "显示错误详情";
+
 
 	public string DebugTelemetryToggleText => IsDebugTelemetryExpanded ? "收起调试诊断" : "展开调试诊断";
 
@@ -484,6 +491,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		FlushConflictLogPreferencesNow();
 	}
 
+	[RelayCommand]
+	private void ToggleConflictLogPreferenceSaveErrorExpanded()
+	{
+		IsConflictLogPreferenceSaveErrorExpanded = !IsConflictLogPreferenceSaveErrorExpanded;
+		OnPropertyChanged(nameof(ConflictLogPreferenceErrorToggleText));
+	}
+
 	partial void OnCurrentModeChanged(EditorMode value)
 	{
 		OnPropertyChanged(nameof(HeaderText));
@@ -554,9 +568,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		OnPropertyChanged(nameof(ShowDebugTelemetryPanel));
 	}
 
+	partial void OnIsConflictLogPreferenceSaveErrorExpandedChanged(bool value)
+	{
+		OnPropertyChanged(nameof(ConflictLogPreferenceErrorToggleText));
+	}
+
 	partial void OnConflictLogPreferenceSaveErrorMessageChanged(string? value)
 	{
 		OnPropertyChanged(nameof(HasConflictLogPreferenceSaveError));
+		if (!string.IsNullOrWhiteSpace(value))
+		{
+			IsConflictLogPreferenceSaveErrorExpanded = true;
+			OnPropertyChanged(nameof(ConflictLogPreferenceErrorToggleText));
+		}
 	}
 
 	partial void OnIsConflictLogFilteredToActiveDocumentChanged(bool value)
