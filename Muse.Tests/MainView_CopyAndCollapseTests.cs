@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Muse.Tests
 {
+	[Collection("ClipboardIntegration")]
 	public class MainView_CopyAndCollapseTests : IDisposable
 	{
 		private readonly string _originalCwd;
@@ -45,7 +46,7 @@ namespace Muse.Tests
 		}
 
 		[Fact]
-		public void CopyErrorDetails_WritesFile()
+		public async System.Threading.Tasks.Task CopyErrorDetails_WritesFile()
 		{
 			var vm = new MainViewModel(new Muse.Rendering.MarkdownPreviewService(), new Muse.Workspace.InMemoryWorkspaceService(enableBackgroundAutoSave: false), false);
 			vm.ConflictLogPreferenceSaveErrorMessage = "测试写入文件内容";
@@ -56,8 +57,8 @@ namespace Muse.Tests
 			// invoke async copy method via reflection and await it
 			var method = typeof(MainView).GetMethod("CopyErrorDetailsAsync", BindingFlags.Public | BindingFlags.Instance);
 			Assert.NotNull(method);
-			var task = (System.Threading.Tasks.Task)method.Invoke(view, Array.Empty<object>())!;
-			task.GetAwaiter().GetResult();
+			var invokedTask = (System.Threading.Tasks.Task)method.Invoke(view, Array.Empty<object>())!;
+			await invokedTask.ConfigureAwait(false);
 
 			// Prefer clipboard; fall back to file. If clipboard not available in test env,
 			// the implementation always writes a debug file as fallback.
@@ -84,7 +85,7 @@ namespace Muse.Tests
 						if (getText is not null)
 						{
 							var task2 = (System.Threading.Tasks.Task)getText.Invoke(clipboard, new object[] { })!;
-							task2.GetAwaiter().GetResult();
+							await task2.ConfigureAwait(false);
 							var resultProp = task2.GetType().GetProperty("Result");
 							if (resultProp is not null)
 							{

@@ -7,6 +7,7 @@ using System.Linq;
 using Avalonia.Markup.Xaml;
 using Muse.ViewModels;
 using Muse.Views;
+using Muse.Services;
 
 namespace Muse;
 
@@ -27,18 +28,29 @@ public partial class App : Application
 			// More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
 			DisableAvaloniaDataAnnotationValidation();
 			_mainViewModel = new MainViewModel();
-			desktop.MainWindow = new MainWindow
+			var clipboardService = new AvaloniaClipboardService();
+			var mainWindow = new MainWindow
 			{
 				DataContext = _mainViewModel
 			};
+			// Try to locate the MainView instance inside the window to inject the clipboard service
+			// MainWindow's content is the MainView instance defined in XAML
+			if (mainWindow.Content is MainView mvRoot)
+			{
+				mvRoot.ClipboardService = clipboardService;
+			}
+			desktop.MainWindow = mainWindow;
 		}
 		else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
 		{
 			_mainViewModel = new MainViewModel();
-			singleViewPlatform.MainView = new MainView
+			var clipboardService = new AvaloniaClipboardService();
+			var mv = new MainView
 			{
-				DataContext = _mainViewModel
+				DataContext = _mainViewModel,
+				ClipboardService = clipboardService
 			};
+			singleViewPlatform.MainView = mv;
 		}
 
 		if (ApplicationLifetime is IControlledApplicationLifetime controlledLifetime)

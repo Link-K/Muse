@@ -33,6 +33,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private const int ConflictLogPrefRetryBaseMs = 2000; // 2s base
 	private const int ConflictLogPrefRetryMaxMs = 30000; // 30s max
 
+	// Countdown timer for UI display of next retry
+	private DateTimeOffset? _conflictLogPreferenceNextRetryAt;
+	private Timer? _conflictLogPreferenceCountdownTimer;
+
 #if DEBUG
 	private int _debugConflictLogFlushAttemptCount;
 	private int _debugConflictLogFlushFailureCount;
@@ -65,6 +69,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	{
 		FlushConflictLogPreferencesNow();
 		_conflictLogPreferenceSaveTimer.Dispose();
+		_conflictLogPreferenceCountdownTimer?.Dispose();
 		_workspaceService.WorkspaceChanged -= HandleWorkspaceChanged;
 	}
 
@@ -184,6 +189,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
 	[ObservableProperty]
 	private bool _isConflictLogPreferenceSaveErrorExpanded;
+
+	[ObservableProperty]
+	private int? _conflictLogPreferenceNextRetrySeconds;
+
+	public bool HasConflictLogPreferenceNextRetry => ConflictLogPreferenceNextRetrySeconds.HasValue && ConflictLogPreferenceNextRetrySeconds.Value > 0;
+
+	partial void OnConflictLogPreferenceNextRetrySecondsChanged(int? value)
+	{
+		OnPropertyChanged(nameof(HasConflictLogPreferenceNextRetry));
+	}
+
 
 
 	public string HeaderText => CurrentMode switch
@@ -494,6 +510,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		}
 
 		FlushConflictLogPreferencesNow();
+	}
+
+	[RelayCommand]
+	private void CancelConflictLogPreferenceRetry()
+	{
+		lock (_conflictLogPreferenceSaveLock)
+		{
+			_conflictLogPreferenceSaveTimer.Change(Timeout.Infinite, Timeout.Infinite);
+			_conflictLogPreferenceSaveFailureCount = 0;
+			ConflictLogPreferenceNextRetrySeconds = null;
+		}
+		ClearConflictLogPreferenceSaveError();
 	}
 
 	[RelayCommand]
@@ -1054,6 +1082,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			}
 			// reset failure tracking on success
 			_conflictLogPreferenceSaveFailureCount = 0;
+			ConflictLogPreferenceNextRetrySeconds = null;
 			ClearConflictLogPreferenceSaveError();
 			WriteDebugLog($"[ConflictLogPref] Flush success (force={force}) -> {settingsPath}");
 		}
@@ -1073,7 +1102,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 				var multiplier = Math.Min((long)1 << (_conflictLogPreferenceSaveFailureCount - 1), (long)int.MaxValue);
 				var delay = (int)Math.Min((long)ConflictLogPrefRetryBaseMs * multiplier, ConflictLogPrefRetryMaxMs);
 				_conflictLogPreferenceSaveTimer.Change(delay, Timeout.Infinite);
-				WriteDebugLog($"[ConflictLogPref] Scheduled retry in {delay}ms (failureCount={_conflictLogPreferenceSaveFailureCount}).");
+				// compute next retry absolute time and expose seconds remaining to UI (rounded up)
+				_conflictLogPreferenceNextRetryAt = DateTimeOffset.UtcNow.AddMilliseconds(delay);
+				ConflictLogPreferenceNextRetrySeconds = (int)Math.Max(0, Math.Ceiling(((_conflictLogPreferenceNextRetryAt.Value - DateTimeOffset.UtcNow).TotalSeconds)));
+				StartConflictLogPreferenceCountdown();
+				WriteDebugLog($"[ConflictLogPref] Scheduled retry in {delay}ms (failureCount={_conflictLogPreferenceSaveFailureCount}). NextRetrySeconds={ConflictLogPreferenceNextRetrySeconds}");
 			}
 			catch
 			{
@@ -1091,6 +1124,42 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private void ClearConflictLogPreferenceSaveError()
 	{
 		ConflictLogPreferenceSaveErrorMessage = null;
+	}
+
+
+	private void StartConflictLogPreferenceCountdown()
+	{
+		try
+		{
+			if (_conflictLogPreferenceNextRetryAt is null)
+			{
+				return;
+			}
+
+			_conflictLogPreferenceCountdownTimer ??= new Timer(_ =>
+			{
+				try
+				{
+					if (_conflictLogPreferenceNextRetryAt is null)
+					{
+						ConflictLogPreferenceNextRetrySeconds = null;
+						_conflictLogPreferenceCountdownTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+						return;
+					}
+					var remaining = (int)Math.Ceiling((_conflictLogPreferenceNextRetryAt.Value - DateTimeOffset.UtcNow).TotalSeconds);
+					if (remaining <= 0)
+					{
+						ConflictLogPreferenceNextRetrySeconds = 0;
+						// stop countdown; the scheduled save timer will run shortly
+						_conflictLogPreferenceCountdownTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+						return;
+					}
+					ConflictLogPreferenceNextRetrySeconds = remaining;
+				}
+				catch { }
+			}, null, 0, 1000);
+		}
+		catch { }
 	}
 
 	[Conditional("DEBUG")]

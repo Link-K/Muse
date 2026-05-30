@@ -12,6 +12,21 @@
 		<vm:MainViewModel />
 	</Design.DataContext>
 
+	<UserControl.Styles>
+		<Style Selector="ProgressBar.retry-progress">
+			<Setter Property="Height" Value="6" />
+			<Setter Property="Width" Value="80" />
+			<Setter Property="Margin" Value="6,0,0,0" />
+			<Setter Property="CornerRadius" Value="3" />
+		</Style>
+		<Style Selector="TextBlock.retry-text">
+			<Setter Property="Foreground" Value="#D13438" />
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="Opacity" Value="0.95" />
+			<Setter Property="TextTrimming" Value="CharacterEllipsis" />
+		</Style>
+	</UserControl.Styles>
+
 	<DockPanel Margin="16" LastChildFill="True">
 		<Border DockPanel.Dock="Top"
 				Padding="12"
@@ -85,6 +100,17 @@
 									Padding="8,4" />
 							<Button Content="重试保存偏好"
 									Command="{Binding RetryConflictLogPreferenceSaveCommand}"
+									Padding="8,4" />
+							<StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6" IsVisible="{Binding HasConflictLogPreferenceNextRetry}">
+								<ProgressBar Classes="retry-progress" IsIndeterminate="True" />
+								<TextBlock Classes="retry-text"
+										   Text="{Binding ConflictLogPreferenceNextRetrySeconds, StringFormat=将在 {0} 秒后自动重试；点击“取消重试”可停止}"
+										   VerticalAlignment="Center"
+										   Margin="6,0"
+										   ToolTip.Tip="将在倒计时结束后自动重试；点击 '取消重试' 可停止" />
+							</StackPanel>
+							<Button Content="取消重试"
+									Command="{Binding CancelConflictLogPreferenceRetryCommand}"
 									Padding="8,4" />
 						</StackPanel>
 						<TextBlock IsVisible="{Binding IsConflictLogPreferenceSaveErrorExpanded}"
