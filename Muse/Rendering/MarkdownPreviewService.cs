@@ -6,17 +6,17 @@ namespace Muse.Rendering;
 
 public sealed class MarkdownPreviewService : IMarkdownPreviewService
 {
-	private readonly MarkdownEngineAdapter _engineAdapter;
+	private readonly IMarkdownRenderingGateway _renderingGateway;
 
-	public MarkdownPreviewService(MarkdownEngineAdapter? engineAdapter = null)
+	public MarkdownPreviewService(IMarkdownRenderingGateway? renderingGateway = null)
 	{
-		_engineAdapter = engineAdapter ?? new MarkdownEngineAdapter();
+		_renderingGateway = renderingGateway ?? new MarkdownRenderingGateway();
 	}
 
 	public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)
 	{
 		var request = new RenderRequest(markdown ?? string.Empty, MapMode(mode), theme);
-		var result = _engineAdapter.Render(request);
+		var result = _renderingGateway.Render(request);
 
 		if (!result.Succeeded)
 		{

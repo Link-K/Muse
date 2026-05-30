@@ -29,7 +29,10 @@
 					<Button Content="切换分屏方向"
 							Command="{Binding ToggleSplitOrientationCommand}"
 							IsEnabled="{Binding IsSplitMode}" />
+					<Button Content="加载当前工作区" Command="{Binding OpenCurrentWorkspaceCommand}" />
+					<Button Content="打开 Sprint2 任务卡" Command="{Binding OpenSprintTaskDocumentCommand}" />
 				</WrapPanel>
+				<TextBlock Text="{Binding WorkspaceSummary}" Opacity="0.85" TextWrapping="Wrap" />
 			</StackPanel>
 		</Border>
 
@@ -54,6 +57,8 @@
 			<StackPanel IsVisible="{Binding IsSplitMode}" Spacing="8">
 				<TextBlock Text="分屏模式：源码 + 预览（骨架）" FontSize="14" FontWeight="SemiBold" />
 				<TextBlock Text="{Binding SplitOrientationText}" Opacity="0.85" />
+				<TextBlock Text="{Binding ActiveDocumentDisplay, StringFormat=活动文档：{0}}" Opacity="0.85" />
+				<TextBlock Text="{Binding ActiveDocumentDirtyText}" Opacity="0.85" />
 
 				<Grid IsVisible="{Binding IsSplitHorizontal}" ColumnDefinitions="*,8,*" Height="260">
 					<Border Grid.Column="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">

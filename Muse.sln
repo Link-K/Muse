@@ -40,6 +40,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Muse.Workspace.Tests", "Muse.Workspace.Tests\Muse.Workspace.Tests.csproj", "{2FB5F814-DF90-4AD7-A799-9C9752A4A434}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Muse.Tests", "Muse.Tests\Muse.Tests.csproj", "{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -242,6 +244,18 @@ Global
 		{2FB5F814-DF90-4AD7-A799-9C9752A4A434}.Release|x64.Build.0 = Release|Any CPU
 		{2FB5F814-DF90-4AD7-A799-9C9752A4A434}.Release|x86.ActiveCfg = Release|Any CPU
 		{2FB5F814-DF90-4AD7-A799-9C9752A4A434}.Release|x86.Build.0 = Release|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Debug|x64.Build.0 = Debug|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Debug|x86.Build.0 = Debug|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Release|x64.ActiveCfg = Release|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Release|x64.Build.0 = Release|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Release|x86.ActiveCfg = Release|Any CPU
+		{1AF956A4-9ECA-4EEA-AE22-99D0B3935E44}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

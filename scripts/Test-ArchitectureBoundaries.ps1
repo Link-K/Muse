@@ -28,6 +28,7 @@ $allowedReferences = @{
     'Muse.Editor.Core.Tests' = @('Muse.Editor.Core')
     'Muse.Editor.Rendering.Tests' = @('Muse.Editor.Rendering')
     'Muse.Workspace.Tests' = @('Muse.Workspace')
+    'Muse.Tests' = @('Muse')
 }
 
 $projectFiles = Get-ChildItem -Path $repoRoot -Recurse -Filter *.csproj -File |

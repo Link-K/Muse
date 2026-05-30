@@ -55,6 +55,10 @@ try {
         & $dotnetCommand test '.\Muse.Workspace.Tests\Muse.Workspace.Tests.csproj'
     }
 
+    Invoke-Step -Name 'UI Mapping Tests' -Action {
+        & $dotnetCommand test '.\Muse.Tests\Muse.Tests.csproj'
+    }
+
     Invoke-Step -Name 'Desktop Smoke Build' -Action {
         & $dotnetCommand build '.\Muse.Desktop\Muse.Desktop.csproj'
     }
