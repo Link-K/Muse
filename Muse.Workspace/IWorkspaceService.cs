@@ -20,6 +20,10 @@ public interface IWorkspaceService
 
 	WorkspaceState RefreshWorkspaceFromDisk();
 
+	SaveDocumentResult ResolveConflictBySavingLocal(string documentId, string localContent);
+
+	SaveDocumentResult ResolveConflictByReloadingFromDisk(string documentId);
+
 	SaveDocumentResult SaveDocument(string documentId, string content);
 
 	WorkspaceState GetState();

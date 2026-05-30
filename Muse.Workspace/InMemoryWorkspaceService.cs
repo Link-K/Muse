@@ -263,6 +263,70 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		return _state;
 	}
 
+	public SaveDocumentResult ResolveConflictBySavingLocal(string documentId, string localContent)
+	{
+		if (string.IsNullOrWhiteSpace(documentId))
+		{
+			return SaveDocumentResult.Failure("invalid_document_id", "Document id is required.");
+		}
+
+		if (localContent is null)
+		{
+			return SaveDocumentResult.Failure("invalid_content", "Local content is required.");
+		}
+
+		return SaveDocument(documentId, localContent);
+	}
+
+	public SaveDocumentResult ResolveConflictByReloadingFromDisk(string documentId)
+	{
+		if (string.IsNullOrWhiteSpace(documentId))
+		{
+			return SaveDocumentResult.Failure("invalid_document_id", "Document id is required.");
+		}
+
+		var normalizedId = NormalizePath(documentId);
+		var index = IndexOfTab(normalizedId);
+		if (index < 0)
+		{
+			return SaveDocumentResult.Failure("document_not_found", "Document was not found in current workspace tabs.");
+		}
+
+		var filePath = _state.OpenTabs[index].FilePath.Replace('/', Path.DirectorySeparatorChar);
+		if (!File.Exists(filePath))
+		{
+			return SaveDocumentResult.Failure("external_missing", "External file no longer exists.");
+		}
+
+		string diskContent;
+		try
+		{
+			diskContent = File.ReadAllText(filePath);
+		}
+		catch (Exception ex)
+		{
+			return SaveDocumentResult.Failure("io_error", $"Failed to read external file: {ex.Message}");
+		}
+
+		_draftContents[normalizedId] = diskContent;
+		RemoveRecoverySnapshot(normalizedId);
+
+		var updated = _state.OpenTabs[index] with
+		{
+			IsDirty = false,
+			LastTouchedAt = DateTimeOffset.UtcNow,
+			HasExternalConflict = false,
+			ConflictMessage = null
+		};
+
+		var tabs = _state.OpenTabs.ToArray();
+		tabs[index] = updated;
+		_state = _state with { OpenTabs = tabs };
+
+		RaiseWorkspaceChanged();
+		return new SaveDocumentResult(true, "reloaded", "Reloaded external content.", updated);
+	}
+
 	public SaveDocumentResult SaveDocument(string documentId, string content)
 	{
 		if (string.IsNullOrWhiteSpace(documentId))

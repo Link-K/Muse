@@ -110,6 +110,8 @@ public partial class MainViewModel : ViewModelBase
 
 	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
 
+	public bool CanResolveActiveConflict => HasActiveDocumentConflict && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
+
 	public bool HasSaveFeedback => !string.IsNullOrWhiteSpace(SaveFeedbackMessage);
 
 	public string SaveFeedbackForeground => SaveFeedbackIsError ? "#D13438" : "#107C10";
@@ -186,6 +188,68 @@ public partial class MainViewModel : ViewModelBase
 		SaveFeedbackMessage = "保存成功。";
 	}
 
+	[RelayCommand]
+	private void ResolveConflictBySavingLocal()
+	{
+		var activeDocumentId = _workspaceService.GetState().ActiveDocumentId;
+		if (string.IsNullOrWhiteSpace(activeDocumentId))
+		{
+			return;
+		}
+
+		var result = _workspaceService.ResolveConflictBySavingLocal(activeDocumentId, MarkdownDraft);
+		if (!result.Succeeded)
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = $"冲突处置失败：{result.Message}";
+			return;
+		}
+
+		SyncWorkspaceState();
+		LastSavedAt = result.Tab?.LastTouchedAt ?? DateTimeOffset.UtcNow;
+		LastSaveStatus = "已保留本地并覆盖保存";
+		SaveFeedbackIsError = false;
+		SaveFeedbackMessage = "已使用本地内容覆盖外部文件。";
+	}
+
+	[RelayCommand]
+	private void ResolveConflictByReloadingExternal()
+	{
+		var activeDocumentId = _workspaceService.GetState().ActiveDocumentId;
+		if (string.IsNullOrWhiteSpace(activeDocumentId))
+		{
+			return;
+		}
+
+		var result = _workspaceService.ResolveConflictByReloadingFromDisk(activeDocumentId);
+		if (!result.Succeeded)
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = $"冲突处置失败：{result.Message}";
+			return;
+		}
+
+		var draftContent = _workspaceService.GetDraftContent(activeDocumentId);
+		if (draftContent is not null)
+		{
+			try
+			{
+				_isHydratingDraft = true;
+				MarkdownDraft = draftContent;
+			}
+			finally
+			{
+				_isHydratingDraft = false;
+			}
+		}
+
+		SyncWorkspaceState();
+		LastSavedAt = result.Tab?.LastTouchedAt ?? DateTimeOffset.UtcNow;
+		LastSaveStatus = "已丢弃本地并重载外部";
+		SaveFeedbackIsError = false;
+		SaveFeedbackMessage = "已重载外部文件内容。";
+	}
+
 	partial void OnCurrentModeChanged(EditorMode value)
 	{
 		OnPropertyChanged(nameof(HeaderText));
@@ -259,6 +323,7 @@ public partial class MainViewModel : ViewModelBase
 	{
 		OnPropertyChanged(nameof(ActiveDocumentDirtyText));
 		OnPropertyChanged(nameof(CanSaveActiveDocument));
+		OnPropertyChanged(nameof(CanResolveActiveConflict));
 		OnPropertyChanged(nameof(WorkspaceSummary));
 	}
 

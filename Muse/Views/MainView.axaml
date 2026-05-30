@@ -42,6 +42,14 @@
 				<TextBlock IsVisible="{Binding HasActiveDocumentConflict}"
 						   Text="{Binding ActiveDocumentConflictText}"
 						   Foreground="#B4009E" FontSize="12" />
+				<WrapPanel IsVisible="{Binding HasActiveDocumentConflict}" ItemHeight="32" ItemWidth="180">
+					<Button Content="保留本地并覆盖保存"
+							Command="{Binding ResolveConflictBySavingLocalCommand}"
+							IsEnabled="{Binding CanResolveActiveConflict}" />
+					<Button Content="丢弃本地并重载外部"
+							Command="{Binding ResolveConflictByReloadingExternalCommand}"
+							IsEnabled="{Binding CanResolveActiveConflict}" />
+				</WrapPanel>
 				<TextBlock Text="{Binding LastSaveStatus, StringFormat=最后保存状态：{0}}" Opacity="0.85" />
 				<TextBlock Text="{Binding LastSavedAtDisplay, StringFormat=最后保存时间：{0}}" Opacity="0.85" />
 				<TextBlock Text="{Binding WorkspaceSummary}" Opacity="0.85" TextWrapping="Wrap" />

@@ -105,6 +105,46 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Contains("外部文件变更", viewModel.ActiveDocumentConflictText);
 	}
 
+	[Fact]
+	public void ResolveConflictBySavingLocalCommand_ShouldClearConflictAndSetSuccessStatus()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", true, DateTimeOffset.UtcNow) { HasExternalConflict = true, ConflictMessage = "检测到外部文件变更，当前草稿尚未同步。" }],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		workspace.Drafts["doc-1"] = "Local draft";
+		var viewModel = new MainViewModel(preview, workspace);
+
+		viewModel.ResolveConflictBySavingLocalCommand.Execute(null);
+
+		Assert.False(viewModel.HasActiveDocumentConflict);
+		Assert.Equal("已保留本地并覆盖保存", viewModel.LastSaveStatus);
+		Assert.Equal("已使用本地内容覆盖外部文件。", viewModel.SaveFeedbackMessage);
+	}
+
+	[Fact]
+	public void ResolveConflictByReloadingExternalCommand_ShouldReloadDraftAndClearConflict()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", true, DateTimeOffset.UtcNow) { HasExternalConflict = true, ConflictMessage = "检测到外部文件变更，当前草稿尚未同步。" }],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		workspace.Drafts["doc-1"] = "External synced";
+		var viewModel = new MainViewModel(preview, workspace);
+
+		viewModel.ResolveConflictByReloadingExternalCommand.Execute(null);
+
+		Assert.False(viewModel.HasActiveDocumentConflict);
+		Assert.Equal("External synced", viewModel.MarkdownDraft);
+		Assert.Equal("已丢弃本地并重载外部", viewModel.LastSaveStatus);
+	}
+
 	private sealed class FakePreviewService : IMarkdownPreviewService
 	{
 		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)
@@ -242,11 +282,49 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			{
 				if (tabs[i].DocumentId == documentId)
 				{
-					tabs[i] = tabs[i] with { IsDirty = false };
+					tabs[i] = tabs[i] with
+					{
+						IsDirty = false,
+						HasExternalConflict = false,
+						ConflictMessage = null
+					};
 					_state = _state with { OpenTabs = tabs };
 					Drafts[documentId] = content;
 					RaiseWorkspaceChanged();
 					return SaveDocumentResult.Success(tabs[i]);
+				}
+			}
+
+			return SaveDocumentResult.Failure("document_not_found", "Document was not found in current workspace tabs.");
+		}
+
+		public SaveDocumentResult ResolveConflictBySavingLocal(string documentId, string localContent)
+		{
+			return SaveDocument(documentId, localContent);
+		}
+
+		public SaveDocumentResult ResolveConflictByReloadingFromDisk(string documentId)
+		{
+			if (!Drafts.TryGetValue(documentId, out var draft))
+			{
+				return SaveDocumentResult.Failure("external_missing", "External file no longer exists.");
+			}
+
+			var tabs = _state.OpenTabs.ToArray();
+			for (var i = 0; i < tabs.Length; i++)
+			{
+				if (tabs[i].DocumentId == documentId)
+				{
+					tabs[i] = tabs[i] with
+					{
+						IsDirty = false,
+						HasExternalConflict = false,
+						ConflictMessage = null,
+						LastTouchedAt = DateTimeOffset.UtcNow
+					};
+					_state = _state with { OpenTabs = tabs };
+					RaiseWorkspaceChanged();
+					return new SaveDocumentResult(true, "reloaded", "Reloaded external content.", tabs[i]);
 				}
 			}
 
