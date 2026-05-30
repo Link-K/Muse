@@ -77,6 +77,9 @@ public partial class MainViewModel : ViewModelBase
 	[ObservableProperty]
 	private string? _activeDocumentConflictMessage;
 
+	[ObservableProperty]
+	private string? _latestConflictEventMessage;
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -107,6 +110,8 @@ public partial class MainViewModel : ViewModelBase
 	public string ActiveDocumentConflictText => ActiveDocumentHasExternalConflict ? (ActiveDocumentConflictMessage ?? "检测到外部文件变更。") : "";
 
 	public bool HasActiveDocumentConflict => ActiveDocumentHasExternalConflict;
+
+	public bool HasLatestConflictEvent => !string.IsNullOrWhiteSpace(LatestConflictEventMessage);
 
 	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
 
@@ -289,6 +294,11 @@ public partial class MainViewModel : ViewModelBase
 		OnPropertyChanged(nameof(HasSaveFeedback));
 	}
 
+	partial void OnLatestConflictEventMessageChanged(string? value)
+	{
+		OnPropertyChanged(nameof(HasLatestConflictEvent));
+	}
+
 	partial void OnSaveFeedbackIsErrorChanged(bool value)
 	{
 		OnPropertyChanged(nameof(SaveFeedbackForeground));
@@ -408,6 +418,11 @@ public partial class MainViewModel : ViewModelBase
 	private void HandleWorkspaceChanged(object? sender, EventArgs e)
 	{
 		SyncWorkspaceState();
+		var latestConflictEvent = _workspaceService.GetConflictEvents().LastOrDefault();
+		LatestConflictEventMessage = latestConflictEvent is null
+			? null
+			: $"冲突日志：{latestConflictEvent.Message}（{latestConflictEvent.OccurredAt.ToLocalTime():HH:mm:ss}）";
+
 		var state = _workspaceService.GetState();
 		var activeTab = state.OpenTabs.FirstOrDefault(tab => tab.DocumentId == state.ActiveDocumentId);
 		if (activeTab is null)

@@ -8,6 +8,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 	private const string InternalWorkspaceFolderName = ".muse";
 	private readonly IAutoSaveScheduler _autoSaveScheduler;
 	private readonly Dictionary<string, string> _draftContents = new(StringComparer.Ordinal);
+	private readonly List<ConflictEvent> _conflictEvents = [];
 	private readonly bool _enableBackgroundAutoSave;
 	private readonly TimeSpan _backgroundAutoSavePulse;
 	private readonly TimeSpan _workspaceRefreshDebounce = TimeSpan.FromMilliseconds(200);
@@ -230,6 +231,10 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 				var diskContent = File.ReadAllText(filePath);
 				var draftContent = GetDraftContent(tab.DocumentId);
 				var hasConflict = draftContent is not null && diskContent != draftContent;
+				if (hasConflict && !tab.HasExternalConflict)
+				{
+					AppendConflictEvent(tab.DocumentId, "detected_external_change", "检测到外部文件变更，当前草稿尚未同步。");
+				}
 				updatedTabs.Add(tab with
 				{
 					LastTouchedAt = DateTimeOffset.UtcNow,
@@ -241,6 +246,10 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 
 			if (!File.Exists(filePath) && tab.IsDirty)
 			{
+				if (!tab.HasExternalConflict)
+				{
+					AppendConflictEvent(tab.DocumentId, "detected_external_delete", "检测到外部文件被删除，当前草稿仍保留在本地。");
+				}
 				updatedTabs.Add(tab with
 				{
 					LastTouchedAt = DateTimeOffset.UtcNow,
@@ -263,6 +272,11 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		return _state;
 	}
 
+	public IReadOnlyList<ConflictEvent> GetConflictEvents()
+	{
+		return _conflictEvents.ToArray();
+	}
+
 	public SaveDocumentResult ResolveConflictBySavingLocal(string documentId, string localContent)
 	{
 		if (string.IsNullOrWhiteSpace(documentId))
@@ -275,27 +289,43 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 			return SaveDocumentResult.Failure("invalid_content", "Local content is required.");
 		}
 
-		return SaveDocument(documentId, localContent);
+		var result = SaveDocument(documentId, localContent);
+		if (result.Succeeded)
+		{
+			AppendConflictEvent(NormalizePath(documentId), "resolved_save_local", "已保留本地并覆盖保存外部文件。");
+		}
+		else
+		{
+			AppendConflictEvent(NormalizePath(documentId), "resolve_failed", $"保留本地并覆盖保存失败：{result.Message}");
+		}
+
+		return result;
 	}
 
 	public SaveDocumentResult ResolveConflictByReloadingFromDisk(string documentId)
 	{
 		if (string.IsNullOrWhiteSpace(documentId))
 		{
-			return SaveDocumentResult.Failure("invalid_document_id", "Document id is required.");
+			var failed = SaveDocumentResult.Failure("invalid_document_id", "Document id is required.");
+			AppendConflictEvent("", "resolve_failed", $"重载外部内容失败：{failed.Message}");
+			return failed;
 		}
 
 		var normalizedId = NormalizePath(documentId);
 		var index = IndexOfTab(normalizedId);
 		if (index < 0)
 		{
-			return SaveDocumentResult.Failure("document_not_found", "Document was not found in current workspace tabs.");
+			var failed = SaveDocumentResult.Failure("document_not_found", "Document was not found in current workspace tabs.");
+			AppendConflictEvent(normalizedId, "resolve_failed", $"重载外部内容失败：{failed.Message}");
+			return failed;
 		}
 
 		var filePath = _state.OpenTabs[index].FilePath.Replace('/', Path.DirectorySeparatorChar);
 		if (!File.Exists(filePath))
 		{
-			return SaveDocumentResult.Failure("external_missing", "External file no longer exists.");
+			var failed = SaveDocumentResult.Failure("external_missing", "External file no longer exists.");
+			AppendConflictEvent(normalizedId, "resolve_failed", $"重载外部内容失败：{failed.Message}");
+			return failed;
 		}
 
 		string diskContent;
@@ -305,7 +335,9 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		}
 		catch (Exception ex)
 		{
-			return SaveDocumentResult.Failure("io_error", $"Failed to read external file: {ex.Message}");
+			var failed = SaveDocumentResult.Failure("io_error", $"Failed to read external file: {ex.Message}");
+			AppendConflictEvent(normalizedId, "resolve_failed", $"重载外部内容失败：{failed.Message}");
+			return failed;
 		}
 
 		_draftContents[normalizedId] = diskContent;
@@ -323,6 +355,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		tabs[index] = updated;
 		_state = _state with { OpenTabs = tabs };
 
+		AppendConflictEvent(normalizedId, "resolved_reload_external", "已丢弃本地并重载外部文件内容。");
 		RaiseWorkspaceChanged();
 		return new SaveDocumentResult(true, "reloaded", "Reloaded external content.", updated);
 	}
@@ -566,5 +599,14 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 	private void RaiseWorkspaceChanged()
 	{
 		WorkspaceChanged?.Invoke(this, EventArgs.Empty);
+	}
+
+	private void AppendConflictEvent(string documentId, string action, string message)
+	{
+		_conflictEvents.Add(new ConflictEvent(documentId, action, message, DateTimeOffset.UtcNow));
+		if (_conflictEvents.Count > 100)
+		{
+			_conflictEvents.RemoveRange(0, _conflictEvents.Count - 100);
+		}
 	}
 }

@@ -103,6 +103,8 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Equal("Local draft", viewModel.MarkdownDraft);
 		Assert.True(viewModel.HasActiveDocumentConflict);
 		Assert.Contains("外部文件变更", viewModel.ActiveDocumentConflictText);
+		Assert.True(viewModel.HasLatestConflictEvent);
+		Assert.Contains("冲突日志", viewModel.LatestConflictEventMessage);
 	}
 
 	[Fact]
@@ -178,6 +180,8 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		public Dictionary<string, string> Drafts { get; } = new(StringComparer.Ordinal);
 
 		public Dictionary<string, string> ExternalFileContents { get; } = new(StringComparer.Ordinal);
+
+		public List<ConflictEvent> ConflictEvents { get; } = [];
 
 		public WorkspaceState OpenWorkspace(string rootPath)
 		{
@@ -262,10 +266,15 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				}
 
 				var draft = Drafts.TryGetValue(tab.DocumentId, out var draftContent) ? draftContent : null;
+				var hasConflict = tab.IsDirty && draft is not null && draftContent != content;
+				if (hasConflict)
+				{
+					ConflictEvents.Add(new ConflictEvent(tab.DocumentId, "detected_external_change", "检测到外部文件变更，当前草稿尚未同步。", DateTimeOffset.UtcNow));
+				}
 				tabs[i] = tab with
 				{
-					HasExternalConflict = tab.IsDirty && draft is not null && draftContent != content,
-					ConflictMessage = tab.IsDirty && draft is not null && draftContent != content ? "检测到外部文件变更，当前草稿尚未同步。" : null
+					HasExternalConflict = hasConflict,
+					ConflictMessage = hasConflict ? "检测到外部文件变更，当前草稿尚未同步。" : null
 				};
 			}
 
@@ -291,6 +300,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 					_state = _state with { OpenTabs = tabs };
 					Drafts[documentId] = content;
 					RaiseWorkspaceChanged();
+					ConflictEvents.Add(new ConflictEvent(documentId, "resolved_save_local", "已保留本地并覆盖保存外部文件。", DateTimeOffset.UtcNow));
 					return SaveDocumentResult.Success(tabs[i]);
 				}
 			}
@@ -323,6 +333,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 						LastTouchedAt = DateTimeOffset.UtcNow
 					};
 					_state = _state with { OpenTabs = tabs };
+					ConflictEvents.Add(new ConflictEvent(documentId, "resolved_reload_external", "已丢弃本地并重载外部文件内容。", DateTimeOffset.UtcNow));
 					RaiseWorkspaceChanged();
 					return new SaveDocumentResult(true, "reloaded", "Reloaded external content.", tabs[i]);
 				}
@@ -334,6 +345,11 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		public WorkspaceState GetState()
 		{
 			return _state;
+		}
+
+		public IReadOnlyList<ConflictEvent> GetConflictEvents()
+		{
+			return ConflictEvents;
 		}
 
 		public void RaiseWorkspaceChanged()

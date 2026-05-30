@@ -218,6 +218,7 @@ public sealed class InMemoryWorkspaceServiceTests
 			Assert.True(activeTab.HasExternalConflict);
 			Assert.Contains("外部文件变更", activeTab.ConflictMessage);
 			Assert.Equal("# Local draft", service.GetDraftContent(tab.DocumentId));
+			Assert.Contains(service.GetConflictEvents(), item => item.DocumentId == tab.DocumentId && item.Action == "detected_external_change");
 		}
 		finally
 		{
@@ -245,6 +246,7 @@ public sealed class InMemoryWorkspaceServiceTests
 			Assert.False(updatedTab.HasExternalConflict);
 			Assert.False(updatedTab.IsDirty);
 			Assert.Equal("# Local draft", File.ReadAllText(Path.Combine(root, "README.md")));
+			Assert.Contains(service.GetConflictEvents(), item => item.DocumentId == tab.DocumentId && item.Action == "resolved_save_local");
 		}
 		finally
 		{
@@ -272,6 +274,7 @@ public sealed class InMemoryWorkspaceServiceTests
 			Assert.False(updatedTab.HasExternalConflict);
 			Assert.False(updatedTab.IsDirty);
 			Assert.Equal("# External change", service.GetDraftContent(tab.DocumentId));
+			Assert.Contains(service.GetConflictEvents(), item => item.DocumentId == tab.DocumentId && item.Action == "resolved_reload_external");
 		}
 		finally
 		{

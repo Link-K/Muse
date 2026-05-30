@@ -20,6 +20,8 @@ public interface IWorkspaceService
 
 	WorkspaceState RefreshWorkspaceFromDisk();
 
+	IReadOnlyList<ConflictEvent> GetConflictEvents();
+
 	SaveDocumentResult ResolveConflictBySavingLocal(string documentId, string localContent);
 
 	SaveDocumentResult ResolveConflictByReloadingFromDisk(string documentId);
