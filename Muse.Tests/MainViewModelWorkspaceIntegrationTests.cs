@@ -422,6 +422,40 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		}
 	}
 
+	[Fact]
+	public void FlushConflictLogPreferencesNow_ShouldIncreaseDebugFlushAttemptCounter()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-DebugCounter-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+
+		try
+		{
+			var state = new WorkspaceState(
+				tempRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(tempRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+
+			var workspace = new FakeWorkspaceService(state);
+			var viewModel = new MainViewModel(preview, workspace, true);
+			viewModel.ToggleConflictLogScopeCommand.Execute(null);
+			viewModel.CycleConflictEventFilterCommand.Execute(null);
+			viewModel.FlushConflictLogPreferencesNow();
+
+			Assert.True(viewModel.DebugConflictLogFlushAttemptCount >= 1);
+			Assert.Equal(0, viewModel.DebugConflictLogFlushFailureCount);
+			Assert.True(string.IsNullOrWhiteSpace(viewModel.DebugLastConflictLogFlushError));
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
 	private static bool WaitForConflictLogPreferences(string settingsPath, bool expectedScope, string expectedFilter, int timeoutMs = 5000)
 	{
 		var sw = Stopwatch.StartNew();

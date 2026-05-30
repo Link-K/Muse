@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
+using System.Diagnostics;
 using System.Linq;
 using Avalonia.Markup.Xaml;
 using Muse.ViewModels;
@@ -45,6 +46,10 @@ public partial class App : Application
 			controlledLifetime.Exit += (_, _) =>
 			{
 				_mainViewModel?.FlushConflictLogPreferencesNow();
+				if (_mainViewModel is not null)
+				{
+					Debug.WriteLine($"[ConflictLogPref] Exit summary attempts={_mainViewModel.DebugConflictLogFlushAttemptCount}, failures={_mainViewModel.DebugConflictLogFlushFailureCount}, lastError={_mainViewModel.DebugLastConflictLogFlushError ?? "none"}");
+				}
 				_mainViewModel?.Dispose();
 			};
 		}

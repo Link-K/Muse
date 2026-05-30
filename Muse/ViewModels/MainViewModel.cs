@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -27,6 +28,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private const int ConflictLogPreferenceSaveDebounceMs = 400;
 	private const int ConflictLogPreferenceSaveMinIntervalMs = 1500;
 
+#if DEBUG
+	private int _debugConflictLogFlushAttemptCount;
+	private int _debugConflictLogFlushFailureCount;
+	private string? _debugLastConflictLogFlushError;
+#endif
+
 	public MainViewModel()
 		: this(new MarkdownPreviewService(), new InMemoryWorkspaceService(enableBackgroundAutoSave: true), true)
 	{
@@ -54,6 +61,42 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		FlushConflictLogPreferencesNow();
 		_conflictLogPreferenceSaveTimer.Dispose();
 		_workspaceService.WorkspaceChanged -= HandleWorkspaceChanged;
+	}
+
+	internal int DebugConflictLogFlushAttemptCount
+	{
+		get
+		{
+#if DEBUG
+			return _debugConflictLogFlushAttemptCount;
+#else
+			return 0;
+#endif
+		}
+	}
+
+	internal int DebugConflictLogFlushFailureCount
+	{
+		get
+		{
+#if DEBUG
+			return _debugConflictLogFlushFailureCount;
+#else
+			return 0;
+#endif
+		}
+	}
+
+	internal string? DebugLastConflictLogFlushError
+	{
+		get
+		{
+#if DEBUG
+			return _debugLastConflictLogFlushError;
+#else
+			return null;
+#endif
+		}
 	}
 
 	[ObservableProperty]
@@ -846,6 +889,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	{
 		if (!_enableConflictLogPreferencePersistence)
 		{
+			WriteDebugLog("[ConflictLogPref] FlushNow skipped: persistence disabled.");
 			return;
 		}
 
@@ -854,6 +898,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			_conflictLogPreferenceSaveTimer.Change(Timeout.Infinite, Timeout.Infinite);
 		}
 
+		WriteDebugLog("[ConflictLogPref] FlushNow requested.");
 		FlushConflictLogPreferencesSave(true);
 	}
 
@@ -870,6 +915,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		{
 			if (!_hasPendingConflictLogPreferenceSave)
 			{
+				WriteDebugLog($"[ConflictLogPref] Flush skipped: no pending writes (force={force}).");
 				return;
 			}
 
@@ -878,6 +924,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			{
 				var remaining = ConflictLogPreferenceSaveMinIntervalMs - (int)Math.Max(elapsed.TotalMilliseconds, 0);
 				_conflictLogPreferenceSaveTimer.Change(Math.Max(remaining, ConflictLogPreferenceSaveDebounceMs), Timeout.Infinite);
+				WriteDebugLog($"[ConflictLogPref] Flush deferred for {remaining}ms due to min interval.");
 				return;
 			}
 
@@ -890,9 +937,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			return;
 		}
 
+#if DEBUG
+		Interlocked.Increment(ref _debugConflictLogFlushAttemptCount);
+#endif
+
 		var settingsPath = GetConflictLogPreferencesPath();
 		if (settingsPath is null)
 		{
+			WriteDebugLog("[ConflictLogPref] Flush skipped: settings path unavailable.");
 			return;
 		}
 
@@ -906,11 +958,24 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			{
 				_lastConflictLogPreferenceWriteAt = DateTimeOffset.UtcNow;
 			}
+			WriteDebugLog($"[ConflictLogPref] Flush success (force={force}) -> {settingsPath}");
 		}
-		catch
+		catch (Exception ex)
 		{
+
+#if DEBUG
+			Interlocked.Increment(ref _debugConflictLogFlushFailureCount);
+			_debugLastConflictLogFlushError = ex.Message;
+#endif
+			WriteDebugLog($"[ConflictLogPref] Flush failed: {ex.Message}");
 			// Ignore preference persistence failures; this should not block core editing.
 		}
+	}
+
+	[Conditional("DEBUG")]
+	private static void WriteDebugLog(string message)
+	{
+		Debug.WriteLine(message);
 	}
 
 	private string? GetConflictLogPreferencesPath()
