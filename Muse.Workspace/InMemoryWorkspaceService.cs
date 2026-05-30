@@ -1,23 +1,41 @@
+using System.Security.Cryptography;
+using System.Text.Json;
+
 namespace Muse.Workspace;
 
 public sealed class InMemoryWorkspaceService : IWorkspaceService
 {
 	private readonly IAutoSaveScheduler _autoSaveScheduler;
+	private readonly Dictionary<string, string> _draftContents = new(StringComparer.Ordinal);
+	private readonly bool _enableBackgroundAutoSave;
+	private readonly TimeSpan _backgroundAutoSavePulse;
+	private System.Threading.Timer? _autoSaveTimer;
 	private WorkspaceState _state = new(null, [], [], null);
 
-	public InMemoryWorkspaceService(IAutoSaveScheduler? autoSaveScheduler = null)
+	public InMemoryWorkspaceService(IAutoSaveScheduler? autoSaveScheduler = null, bool enableBackgroundAutoSave = false, TimeSpan? backgroundAutoSavePulse = null)
 	{
 		_autoSaveScheduler = autoSaveScheduler ?? new MemoryAutoSaveScheduler();
+		_enableBackgroundAutoSave = enableBackgroundAutoSave;
+		_backgroundAutoSavePulse = backgroundAutoSavePulse ?? TimeSpan.FromSeconds(1);
+		if (_enableBackgroundAutoSave)
+		{
+			_autoSaveTimer = new System.Threading.Timer(_ => FlushPendingAutoSaves(), null, _backgroundAutoSavePulse, _backgroundAutoSavePulse);
+		}
 	}
 
 	public WorkspaceState OpenWorkspace(string rootPath)
 	{
 		var normalizedRoot = NormalizePath(rootPath);
+		var recoveryTabs = LoadRecoveryTabs(normalizedRoot);
 		IReadOnlyList<FileTreeNode> fileTree = Directory.Exists(normalizedRoot)
 			? [BuildTree(normalizedRoot)]
 			: Array.Empty<FileTreeNode>();
 
-		_state = new WorkspaceState(normalizedRoot, fileTree, [], null);
+		_state = new WorkspaceState(
+			normalizedRoot,
+			fileTree,
+			recoveryTabs,
+			recoveryTabs.Count > 0 ? recoveryTabs[0].DocumentId : null);
 		return _state;
 	}
 
@@ -105,6 +123,62 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		return updated;
 	}
 
+	public WorkspaceTabState? UpdateDocumentDraft(string documentId, string content)
+	{
+		if (string.IsNullOrWhiteSpace(documentId) || content is null)
+		{
+			return null;
+		}
+
+		var normalizedId = NormalizePath(documentId);
+		var index = IndexOfTab(normalizedId);
+		if (index < 0)
+		{
+			return null;
+		}
+
+		_draftContents[normalizedId] = content;
+		var updated = MarkDirty(normalizedId, true);
+		if (updated is null)
+		{
+			return null;
+		}
+
+		_autoSaveScheduler.Schedule(normalizedId);
+		return updated;
+	}
+
+	public string? GetDraftContent(string documentId)
+	{
+		if (string.IsNullOrWhiteSpace(documentId))
+		{
+			return null;
+		}
+
+		var normalizedId = NormalizePath(documentId);
+		return _draftContents.TryGetValue(normalizedId, out var content) ? content : null;
+	}
+
+	public void FlushPendingAutoSaves()
+	{
+		var readyDocumentIds = _autoSaveScheduler.DrainReady(64);
+		if (readyDocumentIds.Count == 0)
+		{
+			return;
+		}
+
+		foreach (var documentId in readyDocumentIds)
+		{
+			var content = GetDraftContent(documentId);
+			if (content is null)
+			{
+				continue;
+			}
+
+			WriteRecoverySnapshot(documentId, content);
+		}
+	}
+
 	public SaveDocumentResult SaveDocument(string documentId, string content)
 	{
 		if (string.IsNullOrWhiteSpace(documentId))
@@ -128,6 +202,8 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		try
 		{
 			File.WriteAllText(targetPath, content);
+			RemoveRecoverySnapshot(normalizedId);
+			_draftContents[normalizedId] = content;
 		}
 		catch (Exception ex)
 		{
@@ -185,5 +261,79 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 	{
 		var fullPath = System.IO.Path.GetFullPath(path);
 		return fullPath.Replace('\\', '/');
+	}
+
+	private IReadOnlyList<WorkspaceTabState> LoadRecoveryTabs(string normalizedRoot)
+	{
+		var recoveryDirectory = GetRecoveryDirectory(normalizedRoot);
+		if (!Directory.Exists(recoveryDirectory))
+		{
+			return [];
+		}
+
+		var tabs = new List<WorkspaceTabState>();
+		foreach (var file in Directory.EnumerateFiles(recoveryDirectory, "*.json").OrderBy(static item => item, StringComparer.OrdinalIgnoreCase))
+		{
+			try
+			{
+				var snapshot = JsonSerializer.Deserialize<WorkspaceRecoverySnapshot>(File.ReadAllText(file));
+				if (snapshot is null || string.IsNullOrWhiteSpace(snapshot.DocumentId))
+				{
+					continue;
+				}
+
+				_draftContents[snapshot.DocumentId] = snapshot.Content;
+				tabs.Add(new WorkspaceTabState(snapshot.DocumentId, snapshot.FilePath, true, snapshot.SavedAt));
+			}
+			catch
+			{
+				// Ignore malformed recovery snapshots and continue loading the workspace.
+			}
+		}
+
+		return tabs;
+	}
+
+	private void WriteRecoverySnapshot(string documentId, string content)
+	{
+		var recoveryDirectory = GetRecoveryDirectory(_state.WorkspaceRoot ?? string.Empty);
+		Directory.CreateDirectory(recoveryDirectory);
+
+		var normalizedId = NormalizePath(documentId);
+		var tab = _state.OpenTabs.FirstOrDefault(item => item.DocumentId == normalizedId);
+		if (tab is null)
+		{
+			return;
+		}
+
+		var snapshot = new WorkspaceRecoverySnapshot(normalizedId, tab.FilePath, content, DateTimeOffset.UtcNow);
+		var snapshotPath = GetRecoverySnapshotPath(recoveryDirectory, normalizedId);
+		File.WriteAllText(snapshotPath, JsonSerializer.Serialize(snapshot));
+	}
+
+	private void RemoveRecoverySnapshot(string documentId)
+	{
+		if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+		{
+			return;
+		}
+
+		var recoveryDirectory = GetRecoveryDirectory(_state.WorkspaceRoot);
+		var snapshotPath = GetRecoverySnapshotPath(recoveryDirectory, NormalizePath(documentId));
+		if (File.Exists(snapshotPath))
+		{
+			File.Delete(snapshotPath);
+		}
+	}
+
+	private static string GetRecoveryDirectory(string normalizedRoot)
+	{
+		return Path.Combine(normalizedRoot.Replace('/', Path.DirectorySeparatorChar), ".muse", "recovery");
+	}
+
+	private static string GetRecoverySnapshotPath(string recoveryDirectory, string normalizedDocumentId)
+	{
+		var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalizedDocumentId)));
+		return Path.Combine(recoveryDirectory, $"{hash}.json");
 	}
 }

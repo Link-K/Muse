@@ -144,6 +144,20 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			return null;
 		}
 
+		public WorkspaceTabState? UpdateDocumentDraft(string documentId, string content)
+		{
+			return MarkDirty(documentId, true);
+		}
+
+		public string? GetDraftContent(string documentId)
+		{
+			return null;
+		}
+
+		public void FlushPendingAutoSaves()
+		{
+		}
+
 		public SaveDocumentResult SaveDocument(string documentId, string content)
 		{
 			LastSavedDocumentId = documentId;

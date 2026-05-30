@@ -15,7 +15,7 @@ public partial class MainViewModel : ViewModelBase
 	private bool _isHydratingDraft;
 
 	public MainViewModel()
-		: this(new MarkdownPreviewService(), new InMemoryWorkspaceService())
+		: this(new MarkdownPreviewService(), new InMemoryWorkspaceService(enableBackgroundAutoSave: true))
 	{
 	}
 
@@ -199,7 +199,7 @@ public partial class MainViewModel : ViewModelBase
 			return;
 		}
 
-		MarkActiveDocumentDirty();
+		UpdateActiveDocumentDraft(value);
 		LastSaveStatus = "有未保存更改";
 		SaveFeedbackMessage = null;
 	}
@@ -292,6 +292,21 @@ public partial class MainViewModel : ViewModelBase
 			return;
 		}
 
+		var draftContent = _workspaceService.GetDraftContent(activeTab.DocumentId);
+		if (!string.IsNullOrWhiteSpace(draftContent))
+		{
+			try
+			{
+				_isHydratingDraft = true;
+				MarkdownDraft = draftContent;
+			}
+			finally
+			{
+				_isHydratingDraft = false;
+			}
+			return;
+		}
+
 		var filePath = activeTab.FilePath.Replace('/', Path.DirectorySeparatorChar);
 		if (!File.Exists(filePath))
 		{
@@ -312,6 +327,18 @@ public partial class MainViewModel : ViewModelBase
 		{
 			_isHydratingDraft = false;
 		}
+	}
+
+	private void UpdateActiveDocumentDraft(string content)
+	{
+		var state = _workspaceService.GetState();
+		if (string.IsNullOrWhiteSpace(state.ActiveDocumentId))
+		{
+			return;
+		}
+
+		_workspaceService.UpdateDocumentDraft(state.ActiveDocumentId, content);
+		SyncWorkspaceState();
 	}
 
 	private void MarkActiveDocumentDirty()

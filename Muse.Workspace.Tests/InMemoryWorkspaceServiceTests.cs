@@ -148,6 +148,32 @@ public sealed class InMemoryWorkspaceServiceTests
 		}
 	}
 
+	[Fact]
+	public void OpenWorkspace_ShouldRestoreRecoveredDrafts()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var writer = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
+			writer.OpenWorkspace(root);
+			var tab = writer.OpenDocument(Path.Combine(root, "README.md"));
+			writer.UpdateDocumentDraft(tab.DocumentId, "# Recovered draft");
+			writer.FlushPendingAutoSaves();
+
+			var reloaded = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
+			var state = reloaded.OpenWorkspace(root);
+
+			Assert.Single(state.OpenTabs);
+			Assert.True(state.OpenTabs[0].IsDirty);
+			Assert.Equal(tab.DocumentId, state.ActiveDocumentId);
+			Assert.Equal("# Recovered draft", reloaded.GetDraftContent(tab.DocumentId));
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
 	private static string CreateWorkspaceFixture()
 	{
 		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));
