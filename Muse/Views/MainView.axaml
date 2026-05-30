@@ -44,7 +44,25 @@
 						   Foreground="#B4009E" FontSize="12" />
 				<TextBlock IsVisible="{Binding HasLatestConflictEvent}"
 						   Text="{Binding LatestConflictEventMessage}"
-						   Foreground="#605E5C" FontSize="12" />
+						   Foreground="{Binding LatestConflictEventForeground}" FontSize="12" />
+				<WrapPanel IsVisible="{Binding HasAnyConflictEvents}" ItemHeight="30" ItemWidth="180">
+					<Button Content="{Binding ConflictLogScopeToggleText}"
+							Command="{Binding ToggleConflictLogScopeCommand}"
+							HorizontalAlignment="Left"
+							Padding="10,4" />
+					<Button Content="{Binding ConflictEventFilterToggleText}"
+							Command="{Binding CycleConflictEventFilterCommand}"
+							HorizontalAlignment="Left"
+							Padding="10,4" />
+				</WrapPanel>
+				<TextBlock IsVisible="{Binding HasAnyConflictEvents}"
+						   Text="{Binding ConflictLogScopeText}"
+						   Foreground="#605E5C"
+						   FontSize="12" />
+				<TextBlock IsVisible="{Binding HasAnyConflictEvents}"
+						   Text="{Binding ConflictEventFilterText}"
+						   Foreground="#605E5C"
+						   FontSize="12" />
 				<Button IsVisible="{Binding HasRecentConflictEvents}"
 						Content="{Binding ConflictLogToggleText}"
 						Command="{Binding ToggleConflictLogExpandedCommand}"
@@ -56,10 +74,10 @@
 						Background="#08FFFFFF"
 						BorderBrush="#22FFFFFF"
 						BorderThickness="1">
-					<ItemsControl ItemsSource="{Binding RecentConflictEventMessages}">
+					<ItemsControl ItemsSource="{Binding RecentConflictEvents}">
 						<ItemsControl.ItemTemplate>
-							<DataTemplate>
-								<TextBlock Text="{Binding}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,2" />
+							<DataTemplate x:DataType="vm:ConflictEventListItem">
+								<TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,2" />
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>

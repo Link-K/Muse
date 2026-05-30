@@ -177,6 +177,78 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Equal("收起最近冲突日志", viewModel.ConflictLogToggleText);
 	}
 
+	[Fact]
+	public void ConflictLogScopeToggle_ShouldSwitchBetweenActiveDocumentAndGlobalEvents()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[
+				new WorkspaceTabState("doc-1", "D:/repo/files/a.md", true, DateTimeOffset.UtcNow),
+				new WorkspaceTabState("doc-2", "D:/repo/files/b.md", true, DateTimeOffset.UtcNow)
+			],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "detected_external_change", "检测到外部文件变更，当前草稿尚未同步。", DateTimeOffset.UtcNow.AddMinutes(-2)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-2", "resolved_save_local", "已保留本地并覆盖保存外部文件。", DateTimeOffset.UtcNow.AddMinutes(-1)));
+		var viewModel = new MainViewModel(preview, workspace);
+
+		workspace.RaiseWorkspaceChanged();
+
+		Assert.True(viewModel.HasAnyConflictEvents);
+		Assert.Equal("日志范围：当前文档", viewModel.ConflictLogScopeText);
+		Assert.Single(viewModel.RecentConflictEventMessages);
+		Assert.DoesNotContain("(doc-2)", viewModel.RecentConflictEventMessages[0]);
+
+		viewModel.ToggleConflictLogScopeCommand.Execute(null);
+
+		Assert.Equal("日志范围：全部文档", viewModel.ConflictLogScopeText);
+		Assert.Equal(2, viewModel.RecentConflictEventMessages.Length);
+		Assert.Contains("(doc-2)", viewModel.RecentConflictEventMessages[0]);
+	}
+
+	[Fact]
+	public void ConflictEventFilterCycle_ShouldFilterByTypeAndUpdateForeground()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", true, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "detected_external_change", "检测到外部文件变更，当前草稿尚未同步。", DateTimeOffset.UtcNow.AddMinutes(-3)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "resolved_save_local", "已保留本地并覆盖保存外部文件。", DateTimeOffset.UtcNow.AddMinutes(-2)));
+		workspace.ConflictEvents.Add(new ConflictEvent("doc-1", "resolve_save_local_failed", "保留本地并覆盖保存失败。", DateTimeOffset.UtcNow.AddMinutes(-1)));
+		var viewModel = new MainViewModel(preview, workspace);
+
+		workspace.RaiseWorkspaceChanged();
+
+		Assert.Equal("事件类型：全部", viewModel.ConflictEventFilterText);
+		Assert.Equal(3, viewModel.RecentConflictEventMessages.Length);
+		Assert.Equal("#D13438", viewModel.LatestConflictEventForeground);
+
+		viewModel.CycleConflictEventFilterCommand.Execute(null);
+
+		Assert.Equal("事件类型：检测", viewModel.ConflictEventFilterText);
+		Assert.Single(viewModel.RecentConflictEventMessages);
+		Assert.Contains("[检测]", viewModel.RecentConflictEventMessages[0]);
+
+		viewModel.CycleConflictEventFilterCommand.Execute(null);
+
+		Assert.Equal("事件类型：处置", viewModel.ConflictEventFilterText);
+		Assert.Single(viewModel.RecentConflictEventMessages);
+		Assert.Contains("[处置]", viewModel.RecentConflictEventMessages[0]);
+
+		viewModel.CycleConflictEventFilterCommand.Execute(null);
+
+		Assert.Equal("事件类型：失败", viewModel.ConflictEventFilterText);
+		Assert.Single(viewModel.RecentConflictEventMessages);
+		Assert.Contains("[失败]", viewModel.RecentConflictEventMessages[0]);
+		Assert.Equal("#D13438", viewModel.LatestConflictEventForeground);
+	}
+
 	private sealed class FakePreviewService : IMarkdownPreviewService
 	{
 		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)

@@ -84,7 +84,22 @@ public partial class MainViewModel : ViewModelBase
 	private string[] _recentConflictEventMessages = [];
 
 	[ObservableProperty]
+	private ConflictEventListItem[] _recentConflictEvents = [];
+
+	[ObservableProperty]
 	private bool _isConflictLogExpanded;
+
+	[ObservableProperty]
+	private bool _isConflictLogFilteredToActiveDocument = true;
+
+	[ObservableProperty]
+	private int _availableConflictEventCount;
+
+	[ObservableProperty]
+	private ConflictEventFilter _selectedConflictEventFilter = ConflictEventFilter.All;
+
+	[ObservableProperty]
+	private string _latestConflictEventForeground = "#605E5C";
 
 	public string HeaderText => CurrentMode switch
 	{
@@ -119,11 +134,37 @@ public partial class MainViewModel : ViewModelBase
 
 	public bool HasLatestConflictEvent => !string.IsNullOrWhiteSpace(LatestConflictEventMessage);
 
-	public bool HasRecentConflictEvents => RecentConflictEventMessages.Length > 0;
+	public bool HasRecentConflictEvents => RecentConflictEvents.Length > 0;
+
+	public bool HasAnyConflictEvents => AvailableConflictEventCount > 0;
 
 	public string ConflictLogToggleText => IsConflictLogExpanded
 		? "收起最近冲突日志"
 		: $"展开最近冲突日志（{RecentConflictEventMessages.Length}）";
+
+	public string ConflictLogScopeToggleText => IsConflictLogFilteredToActiveDocument
+		? "切换为全部文档日志"
+		: "切换为当前文档日志";
+
+	public string ConflictLogScopeText => IsConflictLogFilteredToActiveDocument ? "日志范围：当前文档" : "日志范围：全部文档";
+
+	public string ConflictEventFilterToggleText => SelectedConflictEventFilter switch
+	{
+		ConflictEventFilter.All => "筛选：全部（点此切到检测）",
+		ConflictEventFilter.Detected => "筛选：仅检测（点此切到处置）",
+		ConflictEventFilter.Resolved => "筛选：仅处置（点此切到失败）",
+		ConflictEventFilter.Failed => "筛选：仅失败（点此切到全部）",
+		_ => "筛选：全部"
+	};
+
+	public string ConflictEventFilterText => SelectedConflictEventFilter switch
+	{
+		ConflictEventFilter.All => "事件类型：全部",
+		ConflictEventFilter.Detected => "事件类型：检测",
+		ConflictEventFilter.Resolved => "事件类型：处置",
+		ConflictEventFilter.Failed => "事件类型：失败",
+		_ => "事件类型：全部"
+	};
 
 	public bool ShowExpandedConflictLogPanel => IsConflictLogExpanded && HasRecentConflictEvents;
 
@@ -275,6 +316,26 @@ public partial class MainViewModel : ViewModelBase
 		IsConflictLogExpanded = !IsConflictLogExpanded;
 	}
 
+	[RelayCommand]
+	private void ToggleConflictLogScope()
+	{
+		IsConflictLogFilteredToActiveDocument = !IsConflictLogFilteredToActiveDocument;
+		RefreshConflictEventPresentation();
+	}
+
+	[RelayCommand]
+	private void CycleConflictEventFilter()
+	{
+		SelectedConflictEventFilter = SelectedConflictEventFilter switch
+		{
+			ConflictEventFilter.All => ConflictEventFilter.Detected,
+			ConflictEventFilter.Detected => ConflictEventFilter.Resolved,
+			ConflictEventFilter.Resolved => ConflictEventFilter.Failed,
+			_ => ConflictEventFilter.All
+		};
+		RefreshConflictEventPresentation();
+	}
+
 	partial void OnCurrentModeChanged(EditorMode value)
 	{
 		OnPropertyChanged(nameof(HeaderText));
@@ -326,10 +387,34 @@ public partial class MainViewModel : ViewModelBase
 		OnPropertyChanged(nameof(ShowExpandedConflictLogPanel));
 	}
 
+	partial void OnRecentConflictEventsChanged(ConflictEventListItem[] value)
+	{
+		OnPropertyChanged(nameof(HasRecentConflictEvents));
+		OnPropertyChanged(nameof(ConflictLogToggleText));
+		OnPropertyChanged(nameof(ShowExpandedConflictLogPanel));
+	}
+
 	partial void OnIsConflictLogExpandedChanged(bool value)
 	{
 		OnPropertyChanged(nameof(ConflictLogToggleText));
 		OnPropertyChanged(nameof(ShowExpandedConflictLogPanel));
+	}
+
+	partial void OnIsConflictLogFilteredToActiveDocumentChanged(bool value)
+	{
+		OnPropertyChanged(nameof(ConflictLogScopeToggleText));
+		OnPropertyChanged(nameof(ConflictLogScopeText));
+	}
+
+	partial void OnAvailableConflictEventCountChanged(int value)
+	{
+		OnPropertyChanged(nameof(HasAnyConflictEvents));
+	}
+
+	partial void OnSelectedConflictEventFilterChanged(ConflictEventFilter value)
+	{
+		OnPropertyChanged(nameof(ConflictEventFilterToggleText));
+		OnPropertyChanged(nameof(ConflictEventFilterText));
 	}
 
 	partial void OnSaveFeedbackIsErrorChanged(bool value)
@@ -495,24 +580,120 @@ public partial class MainViewModel : ViewModelBase
 
 	private void RefreshConflictEventPresentation()
 	{
-		var recentEvents = _workspaceService
-			.GetConflictEvents()
+		var allEvents = _workspaceService.GetConflictEvents();
+		AvailableConflictEventCount = allEvents.Count;
+
+		var activeDocumentId = _workspaceService.GetState().ActiveDocumentId;
+		var filteredEvents = allEvents.AsEnumerable();
+		if (IsConflictLogFilteredToActiveDocument)
+		{
+			if (string.IsNullOrWhiteSpace(activeDocumentId))
+			{
+				filteredEvents = [];
+			}
+			else
+			{
+				filteredEvents = filteredEvents.Where(item => string.Equals(item.DocumentId, activeDocumentId, StringComparison.Ordinal));
+			}
+		}
+
+		filteredEvents = filteredEvents.Where(item => IsConflictEventFilterMatch(item.Action, SelectedConflictEventFilter));
+
+		var recentEvents = filteredEvents
 			.OrderByDescending(item => item.OccurredAt)
 			.Take(5)
 			.ToArray();
 
-		LatestConflictEventMessage = recentEvents.Length == 0
-			? null
-			: $"冲突日志：{recentEvents[0].Message}（{recentEvents[0].OccurredAt.ToLocalTime():HH:mm:ss}）";
-
-		RecentConflictEventMessages = recentEvents
-			.Select(item => $"[{item.OccurredAt.ToLocalTime():HH:mm:ss}] {item.Message}")
-			.ToArray();
+		var includeDocumentId = !IsConflictLogFilteredToActiveDocument;
 
 		if (recentEvents.Length == 0)
 		{
+			LatestConflictEventMessage = null;
+			LatestConflictEventForeground = "#605E5C";
+			RecentConflictEvents = [];
+			RecentConflictEventMessages = [];
 			IsConflictLogExpanded = false;
+			return;
 		}
+
+		var latest = recentEvents[0];
+		var latestCategory = GetConflictEventCategory(latest.Action);
+		LatestConflictEventForeground = GetConflictEventForeground(latestCategory);
+		var latestPrefix = GetConflictEventPrefix(latestCategory);
+		LatestConflictEventMessage = includeDocumentId
+			? $"冲突日志：{latestPrefix}[{latest.DocumentId}] {latest.Message}（{latest.OccurredAt.ToLocalTime():HH:mm:ss}）"
+			: $"冲突日志：{latestPrefix}{latest.Message}（{latest.OccurredAt.ToLocalTime():HH:mm:ss}）";
+
+		RecentConflictEvents = recentEvents
+			.Select(item =>
+			{
+				var category = GetConflictEventCategory(item.Action);
+				var prefix = GetConflictEventPrefix(category);
+				var text = includeDocumentId
+					? $"[{item.OccurredAt.ToLocalTime():HH:mm:ss}] {prefix}({item.DocumentId}) {item.Message}"
+					: $"[{item.OccurredAt.ToLocalTime():HH:mm:ss}] {prefix}{item.Message}";
+				return new ConflictEventListItem(text, GetConflictEventForeground(category));
+			})
+			.ToArray();
+
+		RecentConflictEventMessages = RecentConflictEvents
+			.Select(item => item.Text)
+			.ToArray();
+	}
+
+	private static bool IsConflictEventFilterMatch(string action, ConflictEventFilter filter)
+	{
+		var category = GetConflictEventCategory(action);
+		return filter switch
+		{
+			ConflictEventFilter.All => true,
+			ConflictEventFilter.Detected => category == ConflictEventFilter.Detected,
+			ConflictEventFilter.Resolved => category == ConflictEventFilter.Resolved,
+			ConflictEventFilter.Failed => category == ConflictEventFilter.Failed,
+			_ => true
+		};
+	}
+
+	private static ConflictEventFilter GetConflictEventCategory(string action)
+	{
+		if (action.Contains("failed", StringComparison.OrdinalIgnoreCase))
+		{
+			return ConflictEventFilter.Failed;
+		}
+
+		if (action.StartsWith("resolved", StringComparison.OrdinalIgnoreCase))
+		{
+			return ConflictEventFilter.Resolved;
+		}
+
+		if (action.StartsWith("detected", StringComparison.OrdinalIgnoreCase))
+		{
+			return ConflictEventFilter.Detected;
+		}
+
+		return ConflictEventFilter.All;
+	}
+
+	private static string GetConflictEventPrefix(ConflictEventFilter category)
+	{
+		return category switch
+		{
+			ConflictEventFilter.Detected => "[检测] ",
+			ConflictEventFilter.Resolved => "[处置] ",
+			ConflictEventFilter.Failed => "[失败] ",
+			_ => "[其他] "
+		};
+	}
+
+	private static string GetConflictEventForeground(ConflictEventFilter category)
+	{
+		return category switch
+		{
+			ConflictEventFilter.Detected => "#8A6D1A",
+			ConflictEventFilter.Resolved => "#107C10",
+			ConflictEventFilter.Failed => "#D13438",
+			_ => "#605E5C"
+		};
 	}
 
 	private void UpdateActiveDocumentDraft(string content)
@@ -568,3 +749,13 @@ public enum SplitOrientation
 	Horizontal,
 	Vertical
 }
+
+public enum ConflictEventFilter
+{
+	All,
+	Detected,
+	Resolved,
+	Failed
+}
+
+public sealed record ConflictEventListItem(string Text, string Foreground);
