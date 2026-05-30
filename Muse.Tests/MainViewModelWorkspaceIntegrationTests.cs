@@ -1,6 +1,9 @@
 using Muse.Rendering;
 using Muse.ViewModels;
 using Muse.Workspace;
+using System.Diagnostics;
+using System.Text.Json;
+using System.Threading;
 using Xunit;
 
 namespace Muse.Tests;
@@ -316,6 +319,9 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			Assert.Equal("日志范围：全部文档", viewModelA.ConflictLogScopeText);
 			Assert.Equal("事件类型：处置", viewModelA.ConflictEventFilterText);
 
+			var settingsPath = Path.Combine(tempRoot, ".muse", "settings", "conflict-log.json");
+			Assert.True(WaitForConflictLogPreferences(settingsPath, false, "Resolved"));
+
 			var workspaceB = new FakeWorkspaceService(state);
 			var viewModelB = new MainViewModel(preview, workspaceB, true);
 
@@ -329,6 +335,82 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				Directory.Delete(tempRoot, true);
 			}
 		}
+	}
+
+	[Fact]
+	public void ConflictLogPreferences_WithRapidChanges_ShouldPersistFinalStateAfterDebounce()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-Debounce-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+
+		try
+		{
+			var state = new WorkspaceState(
+				tempRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(tempRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+
+			var workspaceA = new FakeWorkspaceService(state);
+			var viewModelA = new MainViewModel(preview, workspaceA, true);
+
+			for (var i = 0; i < 6; i++)
+			{
+				viewModelA.CycleConflictEventFilterCommand.Execute(null);
+			}
+			viewModelA.ToggleConflictLogScopeCommand.Execute(null);
+			viewModelA.CycleConflictEventFilterCommand.Execute(null);
+			viewModelA.CycleConflictEventFilterCommand.Execute(null);
+
+			Assert.Equal("日志范围：全部文档", viewModelA.ConflictLogScopeText);
+			Assert.Equal("事件类型：全部", viewModelA.ConflictEventFilterText);
+
+			var settingsPath = Path.Combine(tempRoot, ".muse", "settings", "conflict-log.json");
+			Assert.True(WaitForConflictLogPreferences(settingsPath, false, "All"));
+
+			var workspaceB = new FakeWorkspaceService(state);
+			var viewModelB = new MainViewModel(preview, workspaceB, true);
+			Assert.Equal("日志范围：全部文档", viewModelB.ConflictLogScopeText);
+			Assert.Equal("事件类型：全部", viewModelB.ConflictEventFilterText);
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
+	private static bool WaitForConflictLogPreferences(string settingsPath, bool expectedScope, string expectedFilter, int timeoutMs = 5000)
+	{
+		var sw = Stopwatch.StartNew();
+		while (sw.ElapsedMilliseconds < timeoutMs)
+		{
+			if (File.Exists(settingsPath))
+			{
+				try
+				{
+					using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+					if (doc.RootElement.TryGetProperty("IsScopeActiveDocument", out var scopeElement)
+						&& doc.RootElement.TryGetProperty("EventFilter", out var filterElement)
+						&& scopeElement.GetBoolean() == expectedScope
+						&& string.Equals(filterElement.GetString(), expectedFilter, StringComparison.OrdinalIgnoreCase))
+					{
+						return true;
+					}
+				}
+				catch
+				{
+					// Keep polling until timeout.
+				}
+			}
+
+			Thread.Sleep(50);
+		}
+
+		return false;
 	}
 
 	private sealed class FakePreviewService : IMarkdownPreviewService

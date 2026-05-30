@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Muse.Rendering;
@@ -14,11 +15,17 @@ public partial class MainViewModel : ViewModelBase
 	private readonly IMarkdownPreviewService _previewService;
 	private readonly IWorkspaceService _workspaceService;
 	private readonly bool _enableConflictLogPreferencePersistence;
+	private readonly Timer _conflictLogPreferenceSaveTimer;
+	private readonly object _conflictLogPreferenceSaveLock = new();
 	private bool _isHydratingDraft;
 	private bool _isLoadingConflictLogPreferences;
+	private bool _hasPendingConflictLogPreferenceSave;
+	private DateTimeOffset _lastConflictLogPreferenceWriteAt = DateTimeOffset.MinValue;
 	private const string MuseSettingsDirectoryName = ".muse";
 	private const string SettingsDirectoryName = "settings";
 	private const string ConflictLogPreferencesFileName = "conflict-log.json";
+	private const int ConflictLogPreferenceSaveDebounceMs = 400;
+	private const int ConflictLogPreferenceSaveMinIntervalMs = 1500;
 
 	public MainViewModel()
 		: this(new MarkdownPreviewService(), new InMemoryWorkspaceService(enableBackgroundAutoSave: true), true)
@@ -35,6 +42,7 @@ public partial class MainViewModel : ViewModelBase
 		_previewService = previewService;
 		_workspaceService = workspaceService;
 		_enableConflictLogPreferencePersistence = enableConflictLogPreferencePersistence;
+		_conflictLogPreferenceSaveTimer = new Timer(_ => FlushConflictLogPreferencesSave(), null, Timeout.Infinite, Timeout.Infinite);
 		_workspaceService.WorkspaceChanged += HandleWorkspaceChanged;
 		LoadWorkspace(Environment.CurrentDirectory);
 		TryOpenDefaultTaskDocument();
@@ -820,6 +828,46 @@ public partial class MainViewModel : ViewModelBase
 			return;
 		}
 
+		lock (_conflictLogPreferenceSaveLock)
+		{
+			_hasPendingConflictLogPreferenceSave = true;
+			_conflictLogPreferenceSaveTimer.Change(ConflictLogPreferenceSaveDebounceMs, Timeout.Infinite);
+		}
+	}
+
+	private void FlushConflictLogPreferencesSave()
+	{
+		if (!_enableConflictLogPreferencePersistence)
+		{
+			return;
+		}
+
+		var shouldWrite = false;
+		var now = DateTimeOffset.UtcNow;
+		lock (_conflictLogPreferenceSaveLock)
+		{
+			if (!_hasPendingConflictLogPreferenceSave)
+			{
+				return;
+			}
+
+			var elapsed = now - _lastConflictLogPreferenceWriteAt;
+			if (elapsed.TotalMilliseconds < ConflictLogPreferenceSaveMinIntervalMs)
+			{
+				var remaining = ConflictLogPreferenceSaveMinIntervalMs - (int)Math.Max(elapsed.TotalMilliseconds, 0);
+				_conflictLogPreferenceSaveTimer.Change(Math.Max(remaining, ConflictLogPreferenceSaveDebounceMs), Timeout.Infinite);
+				return;
+			}
+
+			shouldWrite = true;
+			_hasPendingConflictLogPreferenceSave = false;
+		}
+
+		if (!shouldWrite)
+		{
+			return;
+		}
+
 		var settingsPath = GetConflictLogPreferencesPath();
 		if (settingsPath is null)
 		{
@@ -832,6 +880,10 @@ public partial class MainViewModel : ViewModelBase
 			var preferences = new ConflictLogPreferences(IsConflictLogFilteredToActiveDocument, SelectedConflictEventFilter.ToString());
 			var json = JsonSerializer.Serialize(preferences, new JsonSerializerOptions { WriteIndented = true });
 			File.WriteAllText(settingsPath, json);
+			lock (_conflictLogPreferenceSaveLock)
+			{
+				_lastConflictLogPreferenceWriteAt = DateTimeOffset.UtcNow;
+			}
 		}
 		catch
 		{
