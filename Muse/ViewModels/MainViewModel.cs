@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Muse.Rendering;
@@ -12,17 +13,28 @@ public partial class MainViewModel : ViewModelBase
 {
 	private readonly IMarkdownPreviewService _previewService;
 	private readonly IWorkspaceService _workspaceService;
+	private readonly bool _enableConflictLogPreferencePersistence;
 	private bool _isHydratingDraft;
+	private bool _isLoadingConflictLogPreferences;
+	private const string MuseSettingsDirectoryName = ".muse";
+	private const string SettingsDirectoryName = "settings";
+	private const string ConflictLogPreferencesFileName = "conflict-log.json";
 
 	public MainViewModel()
-		: this(new MarkdownPreviewService(), new InMemoryWorkspaceService(enableBackgroundAutoSave: true))
+		: this(new MarkdownPreviewService(), new InMemoryWorkspaceService(enableBackgroundAutoSave: true), true)
 	{
 	}
 
 	internal MainViewModel(IMarkdownPreviewService previewService, IWorkspaceService workspaceService)
+		: this(previewService, workspaceService, false)
+	{
+	}
+
+	internal MainViewModel(IMarkdownPreviewService previewService, IWorkspaceService workspaceService, bool enableConflictLogPreferencePersistence)
 	{
 		_previewService = previewService;
 		_workspaceService = workspaceService;
+		_enableConflictLogPreferencePersistence = enableConflictLogPreferencePersistence;
 		_workspaceService.WorkspaceChanged += HandleWorkspaceChanged;
 		LoadWorkspace(Environment.CurrentDirectory);
 		TryOpenDefaultTaskDocument();
@@ -429,6 +441,7 @@ public partial class MainViewModel : ViewModelBase
 		OnPropertyChanged(nameof(ConflictLogScopeToggleText));
 		OnPropertyChanged(nameof(ConflictLogScopeText));
 		OnPropertyChanged(nameof(CanResetConflictLogFilters));
+		SaveConflictLogPreferences();
 	}
 
 	partial void OnAvailableConflictEventCountChanged(int value)
@@ -441,6 +454,7 @@ public partial class MainViewModel : ViewModelBase
 		OnPropertyChanged(nameof(ConflictEventFilterToggleText));
 		OnPropertyChanged(nameof(ConflictEventFilterText));
 		OnPropertyChanged(nameof(CanResetConflictLogFilters));
+		SaveConflictLogPreferences();
 	}
 
 	partial void OnSaveFeedbackIsErrorChanged(bool value)
@@ -492,6 +506,10 @@ public partial class MainViewModel : ViewModelBase
 	{
 		_workspaceService.OpenWorkspace(rootPath);
 		SyncWorkspaceState();
+		if (_enableConflictLogPreferencePersistence)
+		{
+			LoadConflictLogPreferences();
+		}
 	}
 
 	private void TryOpenDefaultTaskDocument()
@@ -761,6 +779,87 @@ public partial class MainViewModel : ViewModelBase
 		OnPropertyChanged(nameof(HasActiveDocumentConflict));
 		OnPropertyChanged(nameof(WorkspaceSummary));
 	}
+
+	private void LoadConflictLogPreferences()
+	{
+		var settingsPath = GetConflictLogPreferencesPath();
+		if (settingsPath is null || !File.Exists(settingsPath))
+		{
+			return;
+		}
+
+		try
+		{
+			var json = File.ReadAllText(settingsPath);
+			var preferences = JsonSerializer.Deserialize<ConflictLogPreferences>(json);
+			if (preferences is null)
+			{
+				return;
+			}
+
+			_isLoadingConflictLogPreferences = true;
+			IsConflictLogFilteredToActiveDocument = preferences.IsScopeActiveDocument;
+			SelectedConflictEventFilter = ParseConflictEventFilter(preferences.EventFilter);
+		}
+		catch
+		{
+			// Ignore preference loading failures to keep editor startup resilient.
+		}
+		finally
+		{
+			_isLoadingConflictLogPreferences = false;
+		}
+
+		RefreshConflictEventPresentation();
+	}
+
+	private void SaveConflictLogPreferences()
+	{
+		if (!_enableConflictLogPreferencePersistence || _isLoadingConflictLogPreferences)
+		{
+			return;
+		}
+
+		var settingsPath = GetConflictLogPreferencesPath();
+		if (settingsPath is null)
+		{
+			return;
+		}
+
+		try
+		{
+			Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+			var preferences = new ConflictLogPreferences(IsConflictLogFilteredToActiveDocument, SelectedConflictEventFilter.ToString());
+			var json = JsonSerializer.Serialize(preferences, new JsonSerializerOptions { WriteIndented = true });
+			File.WriteAllText(settingsPath, json);
+		}
+		catch
+		{
+			// Ignore preference persistence failures; this should not block core editing.
+		}
+	}
+
+	private string? GetConflictLogPreferencesPath()
+	{
+		var workspaceRoot = _workspaceService.GetState().WorkspaceRoot;
+		if (string.IsNullOrWhiteSpace(workspaceRoot))
+		{
+			return null;
+		}
+
+		var normalizedRoot = workspaceRoot.Replace('/', Path.DirectorySeparatorChar);
+		return Path.Combine(normalizedRoot, MuseSettingsDirectoryName, SettingsDirectoryName, ConflictLogPreferencesFileName);
+	}
+
+	private static ConflictEventFilter ParseConflictEventFilter(string? value)
+	{
+		if (Enum.TryParse<ConflictEventFilter>(value, true, out var parsed))
+		{
+			return parsed;
+		}
+
+		return ConflictEventFilter.All;
+	}
 }
 
 public enum EditorMode
@@ -785,3 +884,5 @@ public enum ConflictEventFilter
 }
 
 public sealed record ConflictEventListItem(string Text, string Foreground);
+
+public sealed record ConflictLogPreferences(bool IsScopeActiveDocument, string EventFilter);

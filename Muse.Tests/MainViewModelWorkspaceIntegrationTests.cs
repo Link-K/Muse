@@ -290,6 +290,47 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.False(viewModel.CanResetConflictLogFilters);
 	}
 
+	[Fact]
+	public void ConflictLogPreferences_ShouldPersistAndRestoreAcrossViewModelInstances()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+
+		try
+		{
+			var state = new WorkspaceState(
+				tempRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(tempRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+
+			var workspaceA = new FakeWorkspaceService(state);
+			var viewModelA = new MainViewModel(preview, workspaceA, true);
+
+			workspaceA.RaiseWorkspaceChanged();
+			viewModelA.ToggleConflictLogScopeCommand.Execute(null);
+			viewModelA.CycleConflictEventFilterCommand.Execute(null);
+			viewModelA.CycleConflictEventFilterCommand.Execute(null);
+
+			Assert.Equal("日志范围：全部文档", viewModelA.ConflictLogScopeText);
+			Assert.Equal("事件类型：处置", viewModelA.ConflictEventFilterText);
+
+			var workspaceB = new FakeWorkspaceService(state);
+			var viewModelB = new MainViewModel(preview, workspaceB, true);
+
+			Assert.Equal("日志范围：全部文档", viewModelB.ConflictLogScopeText);
+			Assert.Equal("事件类型：处置", viewModelB.ConflictEventFilterText);
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
 	private sealed class FakePreviewService : IMarkdownPreviewService
 	{
 		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)
