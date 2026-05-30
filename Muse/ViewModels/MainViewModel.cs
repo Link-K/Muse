@@ -23,6 +23,7 @@ public partial class MainViewModel : ViewModelBase
 	{
 		_previewService = previewService;
 		_workspaceService = workspaceService;
+		_workspaceService.WorkspaceChanged += HandleWorkspaceChanged;
 		LoadWorkspace(Environment.CurrentDirectory);
 		TryOpenDefaultTaskDocument();
 		RefreshPreview();
@@ -322,6 +323,33 @@ public partial class MainViewModel : ViewModelBase
 		{
 			SaveFeedbackIsError = true;
 			SaveFeedbackMessage = $"读取文档失败：{ex.Message}";
+		}
+		finally
+		{
+			_isHydratingDraft = false;
+		}
+	}
+
+	private void HandleWorkspaceChanged(object? sender, EventArgs e)
+	{
+		SyncWorkspaceState();
+		var state = _workspaceService.GetState();
+		var activeTab = state.OpenTabs.FirstOrDefault(tab => tab.DocumentId == state.ActiveDocumentId);
+		if (activeTab is null || activeTab.IsDirty)
+		{
+			return;
+		}
+
+		var draftContent = _workspaceService.GetDraftContent(activeTab.DocumentId);
+		if (draftContent is null || draftContent == MarkdownDraft)
+		{
+			return;
+		}
+
+		try
+		{
+			_isHydratingDraft = true;
+			MarkdownDraft = draftContent;
 		}
 		finally
 		{

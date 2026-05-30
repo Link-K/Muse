@@ -66,6 +66,24 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Equal("保存失败：当前没有活动文档。", viewModel.SaveFeedbackMessage);
 	}
 
+	[Fact]
+	public void WorkspaceChangedEvent_ShouldRefreshDraftFromWorkspace()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", false, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		workspace.Drafts["doc-1"] = "External refresh content";
+		var viewModel = new MainViewModel(preview, workspace);
+
+		workspace.RaiseWorkspaceChanged();
+
+		Assert.Equal("External refresh content", viewModel.MarkdownDraft);
+	}
+
 	private sealed class FakePreviewService : IMarkdownPreviewService
 	{
 		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)
@@ -78,6 +96,8 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	{
 		private readonly Queue<WorkspaceState> _openWorkspaceStates;
 		private WorkspaceState _state;
+
+		public event EventHandler? WorkspaceChanged;
 
 		public FakeWorkspaceService(params WorkspaceState[] openWorkspaceStates)
 		{
@@ -94,12 +114,16 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 
 		public string? LastSavedDocumentId { get; private set; }
 
+		public Dictionary<string, string> Drafts { get; } = new(StringComparer.Ordinal);
+
 		public WorkspaceState OpenWorkspace(string rootPath)
 		{
 			if (_openWorkspaceStates.Count > 0)
 			{
 				_state = _openWorkspaceStates.Dequeue();
 			}
+
+			RaiseWorkspaceChanged();
 
 			return _state;
 		}
@@ -112,6 +136,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				OpenTabs = _state.OpenTabs.Concat([tab]).ToArray(),
 				ActiveDocumentId = tab.DocumentId
 			};
+			RaiseWorkspaceChanged();
 			return tab;
 		}
 
@@ -124,6 +149,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			}
 
 			_state = _state with { ActiveDocumentId = documentId };
+			RaiseWorkspaceChanged();
 			return tab;
 		}
 
@@ -137,6 +163,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				{
 					tabs[i] = tabs[i] with { IsDirty = isDirty };
 					_state = _state with { OpenTabs = tabs };
+					RaiseWorkspaceChanged();
 					return tabs[i];
 				}
 			}
@@ -146,16 +173,24 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 
 		public WorkspaceTabState? UpdateDocumentDraft(string documentId, string content)
 		{
+			Drafts[documentId] = content;
 			return MarkDirty(documentId, true);
 		}
 
 		public string? GetDraftContent(string documentId)
 		{
-			return null;
+			return Drafts.TryGetValue(documentId, out var content) ? content : null;
 		}
 
 		public void FlushPendingAutoSaves()
 		{
+			RaiseWorkspaceChanged();
+		}
+
+		public WorkspaceState RefreshWorkspaceFromDisk()
+		{
+			RaiseWorkspaceChanged();
+			return _state;
 		}
 
 		public SaveDocumentResult SaveDocument(string documentId, string content)
@@ -168,6 +203,8 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				{
 					tabs[i] = tabs[i] with { IsDirty = false };
 					_state = _state with { OpenTabs = tabs };
+					Drafts[documentId] = content;
+					RaiseWorkspaceChanged();
 					return SaveDocumentResult.Success(tabs[i]);
 				}
 			}
@@ -178,6 +215,11 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		public WorkspaceState GetState()
 		{
 			return _state;
+		}
+
+		public void RaiseWorkspaceChanged()
+		{
+			WorkspaceChanged?.Invoke(this, EventArgs.Empty);
 		}
 	}
 }

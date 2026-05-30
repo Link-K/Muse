@@ -2,6 +2,8 @@ namespace Muse.Workspace;
 
 public interface IWorkspaceService
 {
+	event EventHandler? WorkspaceChanged;
+
 	WorkspaceState OpenWorkspace(string rootPath);
 
 	WorkspaceTabState OpenDocument(string filePath);
@@ -15,6 +17,8 @@ public interface IWorkspaceService
 	string? GetDraftContent(string documentId);
 
 	void FlushPendingAutoSaves();
+
+	WorkspaceState RefreshWorkspaceFromDisk();
 
 	SaveDocumentResult SaveDocument(string documentId, string content);
 

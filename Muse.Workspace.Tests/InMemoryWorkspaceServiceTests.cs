@@ -174,6 +174,30 @@ public sealed class InMemoryWorkspaceServiceTests
 		}
 	}
 
+	[Fact]
+	public void RefreshWorkspaceFromDisk_ShouldUpdateTreeAndCleanDrafts()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
+			service.OpenWorkspace(root);
+			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+
+			File.WriteAllText(Path.Combine(root, "README.md"), "# Changed");
+			File.WriteAllText(Path.Combine(root, "new-note.md"), "new note");
+
+			var refreshed = service.RefreshWorkspaceFromDisk();
+
+			Assert.Contains(refreshed.FileTree[0].Children, node => !node.IsDirectory && node.Name == "new-note.md");
+			Assert.Equal("# Changed", service.GetDraftContent(tab.DocumentId));
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
 	private static string CreateWorkspaceFixture()
 	{
 		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));

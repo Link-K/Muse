@@ -5,12 +5,19 @@ namespace Muse.Workspace;
 
 public sealed class InMemoryWorkspaceService : IWorkspaceService
 {
+	private const string InternalWorkspaceFolderName = ".muse";
 	private readonly IAutoSaveScheduler _autoSaveScheduler;
 	private readonly Dictionary<string, string> _draftContents = new(StringComparer.Ordinal);
 	private readonly bool _enableBackgroundAutoSave;
 	private readonly TimeSpan _backgroundAutoSavePulse;
+	private readonly TimeSpan _workspaceRefreshDebounce = TimeSpan.FromMilliseconds(200);
+	private readonly object _workspaceRefreshGate = new();
 	private System.Threading.Timer? _autoSaveTimer;
+	private System.Threading.Timer? _workspaceRefreshTimer;
+	private FileSystemWatcher? _workspaceWatcher;
 	private WorkspaceState _state = new(null, [], [], null);
+
+	public event EventHandler? WorkspaceChanged;
 
 	public InMemoryWorkspaceService(IAutoSaveScheduler? autoSaveScheduler = null, bool enableBackgroundAutoSave = false, TimeSpan? backgroundAutoSavePulse = null)
 	{
@@ -25,6 +32,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 
 	public WorkspaceState OpenWorkspace(string rootPath)
 	{
+		DisposeWorkspaceWatcher();
 		var normalizedRoot = NormalizePath(rootPath);
 		var recoveryTabs = LoadRecoveryTabs(normalizedRoot);
 		IReadOnlyList<FileTreeNode> fileTree = Directory.Exists(normalizedRoot)
@@ -36,6 +44,8 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 			fileTree,
 			recoveryTabs,
 			recoveryTabs.Count > 0 ? recoveryTabs[0].DocumentId : null);
+		SetupWorkspaceWatcher(normalizedRoot);
+		RaiseWorkspaceChanged();
 		return _state;
 	}
 
@@ -60,6 +70,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 			OpenTabs = tabs,
 			ActiveDocumentId = tab.DocumentId
 		};
+		RaiseWorkspaceChanged();
 
 		return tab;
 	}
@@ -87,6 +98,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 			OpenTabs = tabs,
 			ActiveDocumentId = updated.DocumentId
 		};
+		RaiseWorkspaceChanged();
 
 		return updated;
 	}
@@ -120,6 +132,8 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 			_autoSaveScheduler.Schedule(updated.DocumentId);
 		}
 
+		RaiseWorkspaceChanged();
+
 		return updated;
 	}
 
@@ -145,6 +159,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		}
 
 		_autoSaveScheduler.Schedule(normalizedId);
+		RaiseWorkspaceChanged();
 		return updated;
 	}
 
@@ -177,6 +192,45 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 
 			WriteRecoverySnapshot(documentId, content);
 		}
+
+		RaiseWorkspaceChanged();
+	}
+
+	public WorkspaceState RefreshWorkspaceFromDisk()
+	{
+		var root = _state.WorkspaceRoot;
+		if (string.IsNullOrWhiteSpace(root))
+		{
+			return _state;
+		}
+
+		var normalizedRoot = NormalizePath(root);
+		IReadOnlyList<FileTreeNode> fileTree = Directory.Exists(normalizedRoot)
+			? [BuildTree(normalizedRoot)]
+			: Array.Empty<FileTreeNode>();
+
+		var updatedTabs = new List<WorkspaceTabState>();
+		foreach (var tab in _state.OpenTabs)
+		{
+			var filePath = tab.FilePath.Replace('/', Path.DirectorySeparatorChar);
+			if (File.Exists(filePath) && !tab.IsDirty)
+			{
+				_draftContents[tab.DocumentId] = File.ReadAllText(filePath);
+				updatedTabs.Add(tab with { LastTouchedAt = DateTimeOffset.UtcNow });
+				continue;
+			}
+
+			updatedTabs.Add(tab);
+		}
+
+		_state = _state with
+		{
+			FileTree = fileTree,
+			OpenTabs = updatedTabs
+		};
+
+		RaiseWorkspaceChanged();
+		return _state;
 	}
 
 	public SaveDocumentResult SaveDocument(string documentId, string content)
@@ -246,6 +300,11 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		var children = new List<FileTreeNode>();
 		foreach (var directory in Directory.EnumerateDirectories(path).OrderBy(static item => item, StringComparer.OrdinalIgnoreCase))
 		{
+			if (IsInternalWorkspacePath(directory))
+			{
+				continue;
+			}
+
 			children.Add(BuildTree(directory));
 		}
 
@@ -261,6 +320,12 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 	{
 		var fullPath = System.IO.Path.GetFullPath(path);
 		return fullPath.Replace('\\', '/');
+	}
+
+	private static bool IsInternalWorkspacePath(string path)
+	{
+		return path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries)
+			.Any(segment => string.Equals(segment, InternalWorkspaceFolderName, StringComparison.OrdinalIgnoreCase));
 	}
 
 	private IReadOnlyList<WorkspaceTabState> LoadRecoveryTabs(string normalizedRoot)
@@ -335,5 +400,75 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 	{
 		var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalizedDocumentId)));
 		return Path.Combine(recoveryDirectory, $"{hash}.json");
+	}
+
+	private void SetupWorkspaceWatcher(string normalizedRoot)
+	{
+		if (!Directory.Exists(normalizedRoot))
+		{
+			return;
+		}
+
+		_workspaceWatcher = new FileSystemWatcher(normalizedRoot)
+		{
+			IncludeSubdirectories = true,
+			NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.CreationTime,
+			EnableRaisingEvents = true
+		};
+
+		_workspaceWatcher.Changed += HandleWorkspaceFileEvent;
+		_workspaceWatcher.Created += HandleWorkspaceFileEvent;
+		_workspaceWatcher.Deleted += HandleWorkspaceFileEvent;
+		_workspaceWatcher.Renamed += HandleWorkspaceRenamedEvent;
+	}
+
+	private void HandleWorkspaceFileEvent(object sender, FileSystemEventArgs e)
+	{
+		if (IsInternalWorkspacePath(e.FullPath))
+		{
+			return;
+		}
+
+		RequestWorkspaceRefresh();
+	}
+
+	private void HandleWorkspaceRenamedEvent(object sender, RenamedEventArgs e)
+	{
+		if (IsInternalWorkspacePath(e.FullPath) || IsInternalWorkspacePath(e.OldFullPath))
+		{
+			return;
+		}
+
+		RequestWorkspaceRefresh();
+	}
+
+	private void RequestWorkspaceRefresh()
+	{
+		lock (_workspaceRefreshGate)
+		{
+			_workspaceRefreshTimer ??= new System.Threading.Timer(_ => RefreshWorkspaceFromDisk(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+			_workspaceRefreshTimer.Change(_workspaceRefreshDebounce, Timeout.InfiniteTimeSpan);
+		}
+	}
+
+	private void DisposeWorkspaceWatcher()
+	{
+		if (_workspaceWatcher is null)
+		{
+			return;
+		}
+
+		_workspaceWatcher.EnableRaisingEvents = false;
+		_workspaceWatcher.Changed -= HandleWorkspaceFileEvent;
+		_workspaceWatcher.Created -= HandleWorkspaceFileEvent;
+		_workspaceWatcher.Deleted -= HandleWorkspaceFileEvent;
+		_workspaceWatcher.Renamed -= HandleWorkspaceRenamedEvent;
+		_workspaceWatcher.Dispose();
+		_workspaceWatcher = null;
+	}
+
+	private void RaiseWorkspaceChanged()
+	{
+		WorkspaceChanged?.Invoke(this, EventArgs.Empty);
 	}
 }
