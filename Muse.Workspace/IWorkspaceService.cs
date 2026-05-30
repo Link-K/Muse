@@ -10,7 +10,7 @@ public interface IWorkspaceService
 
 	WorkspaceTabState? MarkDirty(string documentId, bool isDirty = true);
 
-	SaveDocumentResult SaveDocument(string documentId);
+	SaveDocumentResult SaveDocument(string documentId, string content);
 
 	WorkspaceState GetState();
 }

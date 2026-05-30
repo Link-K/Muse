@@ -128,7 +128,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			return null;
 		}
 
-		public SaveDocumentResult SaveDocument(string documentId)
+		public SaveDocumentResult SaveDocument(string documentId, string content)
 		{
 			LastSavedDocumentId = documentId;
 			var tabs = _state.OpenTabs.ToArray();

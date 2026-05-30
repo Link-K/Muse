@@ -12,6 +12,7 @@ public partial class MainViewModel : ViewModelBase
 {
 	private readonly IMarkdownPreviewService _previewService;
 	private readonly IWorkspaceService _workspaceService;
+	private bool _isHydratingDraft;
 
 	public MainViewModel()
 		: this(new MarkdownPreviewService(), new InMemoryWorkspaceService())
@@ -147,7 +148,7 @@ public partial class MainViewModel : ViewModelBase
 			return;
 		}
 
-		var result = _workspaceService.SaveDocument(activeDocumentId);
+		var result = _workspaceService.SaveDocument(activeDocumentId, MarkdownDraft);
 		if (!result.Succeeded)
 		{
 			SaveFeedbackIsError = true;
@@ -179,6 +180,11 @@ public partial class MainViewModel : ViewModelBase
 	partial void OnMarkdownDraftChanged(string value)
 	{
 		RefreshPreview();
+		if (_isHydratingDraft)
+		{
+			return;
+		}
+
 		MarkActiveDocumentDirty();
 		SaveFeedbackMessage = null;
 	}
@@ -254,6 +260,38 @@ public partial class MainViewModel : ViewModelBase
 
 		_workspaceService.OpenDocument(sprintTaskPath);
 		SyncWorkspaceState();
+		LoadActiveDocumentContent();
+	}
+
+	private void LoadActiveDocumentContent()
+	{
+		var state = _workspaceService.GetState();
+		var activeTab = state.OpenTabs.FirstOrDefault(tab => tab.DocumentId == state.ActiveDocumentId);
+		if (activeTab is null)
+		{
+			return;
+		}
+
+		var filePath = activeTab.FilePath.Replace('/', Path.DirectorySeparatorChar);
+		if (!File.Exists(filePath))
+		{
+			return;
+		}
+
+		try
+		{
+			_isHydratingDraft = true;
+			MarkdownDraft = File.ReadAllText(filePath);
+		}
+		catch (Exception ex)
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = $"读取文档失败：{ex.Message}";
+		}
+		finally
+		{
+			_isHydratingDraft = false;
+		}
 	}
 
 	private void MarkActiveDocumentDirty()

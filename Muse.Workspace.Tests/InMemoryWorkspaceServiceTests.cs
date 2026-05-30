@@ -88,13 +88,14 @@ public sealed class InMemoryWorkspaceServiceTests
 			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
 			service.MarkDirty(tab.DocumentId, true);
 
-			var saved = service.SaveDocument(tab.DocumentId);
+			var saved = service.SaveDocument(tab.DocumentId, "# Updated");
 			var state = service.GetState();
 
 			Assert.True(saved.Succeeded);
 			Assert.Equal("saved", saved.Code);
 			Assert.NotNull(saved.Tab);
 			Assert.False(saved.Tab!.IsDirty);
+			Assert.Equal("# Updated", File.ReadAllText(Path.Combine(root, "README.md")));
 			Assert.Contains(state.OpenTabs, item => item.DocumentId == tab.DocumentId && item.IsDirty == false);
 		}
 		finally
@@ -112,10 +113,33 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			service.OpenWorkspace(root);
 
-			var result = service.SaveDocument(Path.Combine(root, "missing.md"));
+			var result = service.SaveDocument(Path.Combine(root, "missing.md"), "content");
 
 			Assert.False(result.Succeeded);
 			Assert.Equal("document_not_found", result.Code);
+			Assert.Null(result.Tab);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void SaveDocument_WhenDirectoryMissing_ShouldReturnIoError()
+	{
+		var service = new InMemoryWorkspaceService();
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			service.OpenWorkspace(root);
+			var tab = service.OpenDocument(Path.Combine(root, "missing-dir", "new.md"));
+			service.MarkDirty(tab.DocumentId, true);
+
+			var result = service.SaveDocument(tab.DocumentId, "content");
+
+			Assert.False(result.Succeeded);
+			Assert.Equal("io_error", result.Code);
 			Assert.Null(result.Tab);
 		}
 		finally
