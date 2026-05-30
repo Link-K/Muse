@@ -28,6 +28,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private const int ConflictLogPreferenceSaveDebounceMs = 400;
 	private const int ConflictLogPreferenceSaveMinIntervalMs = 1500;
 
+	// Exponential backoff for preference save failures
+	private int _conflictLogPreferenceSaveFailureCount;
+	private const int ConflictLogPrefRetryBaseMs = 2000; // 2s base
+	private const int ConflictLogPrefRetryMaxMs = 30000; // 30s max
+
 #if DEBUG
 	private int _debugConflictLogFlushAttemptCount;
 	private int _debugConflictLogFlushFailureCount;
@@ -1047,6 +1052,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			{
 				_lastConflictLogPreferenceWriteAt = DateTimeOffset.UtcNow;
 			}
+			// reset failure tracking on success
+			_conflictLogPreferenceSaveFailureCount = 0;
 			ClearConflictLogPreferenceSaveError();
 			WriteDebugLog($"[ConflictLogPref] Flush success (force={force}) -> {settingsPath}");
 		}
@@ -1059,6 +1066,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 #endif
 			SetConflictLogPreferenceSaveError($"偏好保存失败：{ex.Message}");
 			WriteDebugLog($"[ConflictLogPref] Flush failed: {ex.Message}");
+			// Schedule retry with exponential backoff so we don't hammer writes on persistent failures.
+			try
+			{
+				_conflictLogPreferenceSaveFailureCount++;
+				var multiplier = Math.Min((long)1 << (_conflictLogPreferenceSaveFailureCount - 1), (long)int.MaxValue);
+				var delay = (int)Math.Min((long)ConflictLogPrefRetryBaseMs * multiplier, ConflictLogPrefRetryMaxMs);
+				_conflictLogPreferenceSaveTimer.Change(delay, Timeout.Infinite);
+				WriteDebugLog($"[ConflictLogPref] Scheduled retry in {delay}ms (failureCount={_conflictLogPreferenceSaveFailureCount}).");
+			}
+			catch
+			{
+				// ignore scheduling failures
+			}
 			// Ignore preference persistence failures; this should not block core editing.
 		}
 	}
