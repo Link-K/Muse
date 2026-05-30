@@ -11,44 +11,57 @@ namespace Muse;
 
 public partial class App : Application
 {
-    public override void Initialize()
-    {
-        AvaloniaXamlLoader.Load(this);
-    }
+	private MainViewModel? _mainViewModel;
 
-    public override void OnFrameworkInitializationCompleted()
-    {
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            // Avoid duplicate validations from both Avalonia and the CommunityToolkit. 
-            // More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
-            DisableAvaloniaDataAnnotationValidation();
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = new MainViewModel()
-            };
-        }
-        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
-        {
-            singleViewPlatform.MainView = new MainView
-            {
-                DataContext = new MainViewModel()
-            };
-        }
+	public override void Initialize()
+	{
+		AvaloniaXamlLoader.Load(this);
+	}
 
-        base.OnFrameworkInitializationCompleted();
-    }
+	public override void OnFrameworkInitializationCompleted()
+	{
+		if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+		{
+			// Avoid duplicate validations from both Avalonia and the CommunityToolkit.
+			// More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
+			DisableAvaloniaDataAnnotationValidation();
+			_mainViewModel = new MainViewModel();
+			desktop.MainWindow = new MainWindow
+			{
+				DataContext = _mainViewModel
+			};
+		}
+		else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
+		{
+			_mainViewModel = new MainViewModel();
+			singleViewPlatform.MainView = new MainView
+			{
+				DataContext = _mainViewModel
+			};
+		}
 
-    private void DisableAvaloniaDataAnnotationValidation()
-    {
-        // Get an array of plugins to remove
-        var dataValidationPluginsToRemove =
-            BindingPlugins.DataValidators.OfType<DataAnnotationsValidationPlugin>().ToArray();
+		if (ApplicationLifetime is IControlledApplicationLifetime controlledLifetime)
+		{
+			controlledLifetime.Exit += (_, _) =>
+			{
+				_mainViewModel?.FlushConflictLogPreferencesNow();
+				_mainViewModel?.Dispose();
+			};
+		}
 
-        // remove each entry found
-        foreach (var plugin in dataValidationPluginsToRemove)
-        {
-            BindingPlugins.DataValidators.Remove(plugin);
-        }
-    }
+		base.OnFrameworkInitializationCompleted();
+	}
+
+	private void DisableAvaloniaDataAnnotationValidation()
+	{
+		// Get an array of plugins to remove
+		var dataValidationPluginsToRemove =
+			BindingPlugins.DataValidators.OfType<DataAnnotationsValidationPlugin>().ToArray();
+
+		// remove each entry found
+		foreach (var plugin in dataValidationPluginsToRemove)
+		{
+			BindingPlugins.DataValidators.Remove(plugin);
+		}
+	}
 }

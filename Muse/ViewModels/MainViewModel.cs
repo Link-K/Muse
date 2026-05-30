@@ -10,7 +10,7 @@ using Muse.Workspace;
 
 namespace Muse.ViewModels;
 
-public partial class MainViewModel : ViewModelBase
+public partial class MainViewModel : ViewModelBase, IDisposable
 {
 	private readonly IMarkdownPreviewService _previewService;
 	private readonly IWorkspaceService _workspaceService;
@@ -42,11 +42,18 @@ public partial class MainViewModel : ViewModelBase
 		_previewService = previewService;
 		_workspaceService = workspaceService;
 		_enableConflictLogPreferencePersistence = enableConflictLogPreferencePersistence;
-		_conflictLogPreferenceSaveTimer = new Timer(_ => FlushConflictLogPreferencesSave(), null, Timeout.Infinite, Timeout.Infinite);
+		_conflictLogPreferenceSaveTimer = new Timer(_ => FlushConflictLogPreferencesSave(false), null, Timeout.Infinite, Timeout.Infinite);
 		_workspaceService.WorkspaceChanged += HandleWorkspaceChanged;
 		LoadWorkspace(Environment.CurrentDirectory);
 		TryOpenDefaultTaskDocument();
 		RefreshPreview();
+	}
+
+	public void Dispose()
+	{
+		FlushConflictLogPreferencesNow();
+		_conflictLogPreferenceSaveTimer.Dispose();
+		_workspaceService.WorkspaceChanged -= HandleWorkspaceChanged;
 	}
 
 	[ObservableProperty]
@@ -835,7 +842,22 @@ public partial class MainViewModel : ViewModelBase
 		}
 	}
 
-	private void FlushConflictLogPreferencesSave()
+	internal void FlushConflictLogPreferencesNow()
+	{
+		if (!_enableConflictLogPreferencePersistence)
+		{
+			return;
+		}
+
+		lock (_conflictLogPreferenceSaveLock)
+		{
+			_conflictLogPreferenceSaveTimer.Change(Timeout.Infinite, Timeout.Infinite);
+		}
+
+		FlushConflictLogPreferencesSave(true);
+	}
+
+	private void FlushConflictLogPreferencesSave(bool force)
 	{
 		if (!_enableConflictLogPreferencePersistence)
 		{
@@ -852,7 +874,7 @@ public partial class MainViewModel : ViewModelBase
 			}
 
 			var elapsed = now - _lastConflictLogPreferenceWriteAt;
-			if (elapsed.TotalMilliseconds < ConflictLogPreferenceSaveMinIntervalMs)
+			if (!force && elapsed.TotalMilliseconds < ConflictLogPreferenceSaveMinIntervalMs)
 			{
 				var remaining = ConflictLogPreferenceSaveMinIntervalMs - (int)Math.Max(elapsed.TotalMilliseconds, 0);
 				_conflictLogPreferenceSaveTimer.Change(Math.Max(remaining, ConflictLogPreferenceSaveDebounceMs), Timeout.Infinite);

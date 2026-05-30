@@ -383,6 +383,45 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		}
 	}
 
+	[Fact]
+	public void FlushConflictLogPreferencesNow_ShouldPersistImmediatelyWithoutWaitingDebounce()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-FlushNow-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+
+		try
+		{
+			var state = new WorkspaceState(
+				tempRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(tempRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+
+			var workspaceA = new FakeWorkspaceService(state);
+			var viewModelA = new MainViewModel(preview, workspaceA, true);
+			viewModelA.ToggleConflictLogScopeCommand.Execute(null);
+			viewModelA.CycleConflictEventFilterCommand.Execute(null);
+			viewModelA.CycleConflictEventFilterCommand.Execute(null);
+			viewModelA.FlushConflictLogPreferencesNow();
+
+			var settingsPath = Path.Combine(tempRoot, ".muse", "settings", "conflict-log.json");
+			Assert.True(WaitForConflictLogPreferences(settingsPath, false, "Resolved", 1000));
+
+			var workspaceB = new FakeWorkspaceService(state);
+			var viewModelB = new MainViewModel(preview, workspaceB, true);
+			Assert.Equal("日志范围：全部文档", viewModelB.ConflictLogScopeText);
+			Assert.Equal("事件类型：处置", viewModelB.ConflictEventFilterText);
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
 	private static bool WaitForConflictLogPreferences(string settingsPath, bool expectedScope, string expectedFilter, int timeoutMs = 5000)
 	{
 		var sw = Stopwatch.StartNew();
