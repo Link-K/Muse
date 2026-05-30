@@ -91,9 +91,32 @@ public sealed class InMemoryWorkspaceServiceTests
 			var saved = service.SaveDocument(tab.DocumentId);
 			var state = service.GetState();
 
-			Assert.NotNull(saved);
-			Assert.False(saved!.IsDirty);
+			Assert.True(saved.Succeeded);
+			Assert.Equal("saved", saved.Code);
+			Assert.NotNull(saved.Tab);
+			Assert.False(saved.Tab!.IsDirty);
 			Assert.Contains(state.OpenTabs, item => item.DocumentId == tab.DocumentId && item.IsDirty == false);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void SaveDocument_WhenDocumentMissing_ShouldReturnFailure()
+	{
+		var service = new InMemoryWorkspaceService();
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			service.OpenWorkspace(root);
+
+			var result = service.SaveDocument(Path.Combine(root, "missing.md"));
+
+			Assert.False(result.Succeeded);
+			Assert.Equal("document_not_found", result.Code);
+			Assert.Null(result.Tab);
 		}
 		finally
 		{

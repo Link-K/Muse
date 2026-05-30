@@ -45,6 +45,9 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Equal("doc-1", workspace.LastSavedDocumentId);
 		Assert.False(viewModel.ActiveDocumentIsDirty);
 		Assert.Equal("脏状态：已保存", viewModel.ActiveDocumentDirtyText);
+		Assert.True(viewModel.HasSaveFeedback);
+		Assert.Equal("保存成功。", viewModel.SaveFeedbackMessage);
+		Assert.False(viewModel.SaveFeedbackIsError);
 	}
 
 	private sealed class FakePreviewService : IMarkdownPreviewService
@@ -125,7 +128,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			return null;
 		}
 
-		public WorkspaceTabState? SaveDocument(string documentId)
+		public SaveDocumentResult SaveDocument(string documentId)
 		{
 			LastSavedDocumentId = documentId;
 			var tabs = _state.OpenTabs.ToArray();
@@ -135,11 +138,11 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				{
 					tabs[i] = tabs[i] with { IsDirty = false };
 					_state = _state with { OpenTabs = tabs };
-					return tabs[i];
+					return SaveDocumentResult.Success(tabs[i]);
 				}
 			}
 
-			return null;
+			return SaveDocumentResult.Failure("document_not_found", "Document was not found in current workspace tabs.");
 		}
 
 		public WorkspaceState GetState()

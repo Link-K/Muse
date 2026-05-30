@@ -35,6 +35,10 @@
 							Command="{Binding SaveActiveDocumentCommand}"
 							IsEnabled="{Binding CanSaveActiveDocument}" />
 				</WrapPanel>
+				<TextBlock IsVisible="{Binding HasSaveFeedback}"
+						   Text="{Binding SaveFeedbackMessage}"
+						   Foreground="{Binding SaveFeedbackForeground}"
+						   FontSize="12" />
 				<TextBlock Text="{Binding WorkspaceSummary}" Opacity="0.85" TextWrapping="Wrap" />
 			</StackPanel>
 		</Border>

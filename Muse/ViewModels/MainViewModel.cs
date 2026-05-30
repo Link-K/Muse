@@ -57,6 +57,12 @@ public partial class MainViewModel : ViewModelBase
 	[ObservableProperty]
 	private bool _activeDocumentIsDirty;
 
+	[ObservableProperty]
+	private string? _saveFeedbackMessage;
+
+	[ObservableProperty]
+	private bool _saveFeedbackIsError;
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -85,6 +91,10 @@ public partial class MainViewModel : ViewModelBase
 	public string ActiveDocumentDirtyText => ActiveDocumentIsDirty ? "脏状态：已修改" : "脏状态：已保存";
 
 	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
+
+	public bool HasSaveFeedback => !string.IsNullOrWhiteSpace(SaveFeedbackMessage);
+
+	public string SaveFeedbackForeground => SaveFeedbackIsError ? "#D13438" : "#107C10";
 
 	public string WorkspaceSummary => $"工作区：{WorkspaceRootDisplay} | 标签：{OpenTabsCount} | 当前：{ActiveDocumentDisplay} | {ActiveDocumentDirtyText}";
 
@@ -132,11 +142,22 @@ public partial class MainViewModel : ViewModelBase
 		var activeDocumentId = _workspaceService.GetState().ActiveDocumentId;
 		if (string.IsNullOrWhiteSpace(activeDocumentId))
 		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = "保存失败：当前没有活动文档。";
 			return;
 		}
 
-		_workspaceService.SaveDocument(activeDocumentId);
+		var result = _workspaceService.SaveDocument(activeDocumentId);
+		if (!result.Succeeded)
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = $"保存失败：{result.Message}";
+			return;
+		}
+
 		SyncWorkspaceState();
+		SaveFeedbackIsError = false;
+		SaveFeedbackMessage = "保存成功。";
 	}
 
 	partial void OnCurrentModeChanged(EditorMode value)
@@ -159,6 +180,17 @@ public partial class MainViewModel : ViewModelBase
 	{
 		RefreshPreview();
 		MarkActiveDocumentDirty();
+		SaveFeedbackMessage = null;
+	}
+
+	partial void OnSaveFeedbackMessageChanged(string? value)
+	{
+		OnPropertyChanged(nameof(HasSaveFeedback));
+	}
+
+	partial void OnSaveFeedbackIsErrorChanged(bool value)
+	{
+		OnPropertyChanged(nameof(SaveFeedbackForeground));
 	}
 
 	partial void OnPreviewTextChanged(string value)

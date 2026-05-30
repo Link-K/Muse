@@ -105,18 +105,18 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		return updated;
 	}
 
-	public WorkspaceTabState? SaveDocument(string documentId)
+	public SaveDocumentResult SaveDocument(string documentId)
 	{
 		if (string.IsNullOrWhiteSpace(documentId))
 		{
-			return null;
+			return SaveDocumentResult.Failure("invalid_document_id", "Document id is required.");
 		}
 
 		var normalizedId = NormalizePath(documentId);
 		var index = IndexOfTab(normalizedId);
 		if (index < 0)
 		{
-			return null;
+			return SaveDocumentResult.Failure("document_not_found", "Document was not found in current workspace tabs.");
 		}
 
 		var updated = _state.OpenTabs[index] with
@@ -129,7 +129,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		tabs[index] = updated;
 		_state = _state with { OpenTabs = tabs };
 
-		return updated;
+		return SaveDocumentResult.Success(updated);
 	}
 
 	public WorkspaceState GetState()
