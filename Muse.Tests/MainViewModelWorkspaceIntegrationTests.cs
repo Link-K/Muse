@@ -84,6 +84,27 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Equal("External refresh content", viewModel.MarkdownDraft);
 	}
 
+	[Fact]
+	public void WorkspaceChangedEvent_WhenConflictShouldShowWarningAndKeepDraft()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", true, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		var viewModel = new MainViewModel(preview, workspace);
+		viewModel.MarkdownDraft = "Local draft";
+		workspace.ExternalFileContents["doc-1"] = "External change";
+
+		workspace.RefreshWorkspaceFromDisk();
+
+		Assert.Equal("Local draft", viewModel.MarkdownDraft);
+		Assert.True(viewModel.HasActiveDocumentConflict);
+		Assert.Contains("外部文件变更", viewModel.ActiveDocumentConflictText);
+	}
+
 	private sealed class FakePreviewService : IMarkdownPreviewService
 	{
 		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)
@@ -115,6 +136,8 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		public string? LastSavedDocumentId { get; private set; }
 
 		public Dictionary<string, string> Drafts { get; } = new(StringComparer.Ordinal);
+
+		public Dictionary<string, string> ExternalFileContents { get; } = new(StringComparer.Ordinal);
 
 		public WorkspaceState OpenWorkspace(string rootPath)
 		{
@@ -189,6 +212,24 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 
 		public WorkspaceState RefreshWorkspaceFromDisk()
 		{
+			var tabs = _state.OpenTabs.ToArray();
+			for (var i = 0; i < tabs.Length; i++)
+			{
+				var tab = tabs[i];
+				if (!ExternalFileContents.TryGetValue(tab.DocumentId, out var content))
+				{
+					continue;
+				}
+
+				var draft = Drafts.TryGetValue(tab.DocumentId, out var draftContent) ? draftContent : null;
+				tabs[i] = tab with
+				{
+					HasExternalConflict = tab.IsDirty && draft is not null && draftContent != content,
+					ConflictMessage = tab.IsDirty && draft is not null && draftContent != content ? "检测到外部文件变更，当前草稿尚未同步。" : null
+				};
+			}
+
+			_state = _state with { OpenTabs = tabs };
 			RaiseWorkspaceChanged();
 			return _state;
 		}

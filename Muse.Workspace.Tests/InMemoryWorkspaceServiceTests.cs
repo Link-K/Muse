@@ -198,6 +198,33 @@ public sealed class InMemoryWorkspaceServiceTests
 		}
 	}
 
+	[Fact]
+	public void RefreshWorkspaceFromDisk_WhenDirtyAndDiskChanged_ShouldMarkConflictWithoutOverwritingDraft()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
+			service.OpenWorkspace(root);
+			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			service.UpdateDocumentDraft(tab.DocumentId, "# Local draft");
+
+			File.WriteAllText(Path.Combine(root, "README.md"), "# External change");
+
+			var refreshed = service.RefreshWorkspaceFromDisk();
+			var activeTab = refreshed.OpenTabs.First(item => item.DocumentId == tab.DocumentId);
+
+			Assert.True(activeTab.IsDirty);
+			Assert.True(activeTab.HasExternalConflict);
+			Assert.Contains("外部文件变更", activeTab.ConflictMessage);
+			Assert.Equal("# Local draft", service.GetDraftContent(tab.DocumentId));
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
 	private static string CreateWorkspaceFixture()
 	{
 		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));

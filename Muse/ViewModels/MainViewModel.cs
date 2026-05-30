@@ -71,6 +71,12 @@ public partial class MainViewModel : ViewModelBase
 	[ObservableProperty]
 	private string _lastSaveStatus = "未保存";
 
+	[ObservableProperty]
+	private bool _activeDocumentHasExternalConflict;
+
+	[ObservableProperty]
+	private string? _activeDocumentConflictMessage;
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -97,6 +103,10 @@ public partial class MainViewModel : ViewModelBase
 	public bool HasPreviewDiagnostic => !string.IsNullOrWhiteSpace(PreviewDiagnostic);
 
 	public string ActiveDocumentDirtyText => ActiveDocumentIsDirty ? "脏状态：已修改" : "脏状态：已保存";
+
+	public string ActiveDocumentConflictText => ActiveDocumentHasExternalConflict ? (ActiveDocumentConflictMessage ?? "检测到外部文件变更。") : "";
+
+	public bool HasActiveDocumentConflict => ActiveDocumentHasExternalConflict;
 
 	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
 
@@ -335,8 +345,24 @@ public partial class MainViewModel : ViewModelBase
 		SyncWorkspaceState();
 		var state = _workspaceService.GetState();
 		var activeTab = state.OpenTabs.FirstOrDefault(tab => tab.DocumentId == state.ActiveDocumentId);
-		if (activeTab is null || activeTab.IsDirty)
+		if (activeTab is null)
 		{
+			return;
+		}
+
+		ActiveDocumentHasExternalConflict = activeTab.HasExternalConflict;
+		ActiveDocumentConflictMessage = activeTab.ConflictMessage;
+		OnPropertyChanged(nameof(ActiveDocumentConflictText));
+		OnPropertyChanged(nameof(HasActiveDocumentConflict));
+
+		if (activeTab.IsDirty)
+		{
+			if (activeTab.HasExternalConflict)
+			{
+				LastSaveStatus = "检测到外部文件变更";
+				SaveFeedbackIsError = true;
+				SaveFeedbackMessage = activeTab.ConflictMessage ?? "检测到外部文件变更，当前草稿未被回填。";
+			}
 			return;
 		}
 
@@ -389,7 +415,12 @@ public partial class MainViewModel : ViewModelBase
 		OpenTabsCount = state.OpenTabs.Count;
 		ActiveDocumentDisplay = state.ActiveDocumentId ?? "无";
 		ActiveDocumentIsDirty = activeTab?.IsDirty ?? false;
+		ActiveDocumentHasExternalConflict = activeTab?.HasExternalConflict ?? false;
+		ActiveDocumentConflictMessage = activeTab?.ConflictMessage;
 		OnPropertyChanged(nameof(CanSaveActiveDocument));
+		OnPropertyChanged(nameof(ActiveDocumentConflictText));
+		OnPropertyChanged(nameof(HasActiveDocumentConflict));
+		OnPropertyChanged(nameof(WorkspaceSummary));
 	}
 }
 

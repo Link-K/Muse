@@ -216,7 +216,37 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 			if (File.Exists(filePath) && !tab.IsDirty)
 			{
 				_draftContents[tab.DocumentId] = File.ReadAllText(filePath);
-				updatedTabs.Add(tab with { LastTouchedAt = DateTimeOffset.UtcNow });
+				updatedTabs.Add(tab with
+				{
+					LastTouchedAt = DateTimeOffset.UtcNow,
+					HasExternalConflict = false,
+					ConflictMessage = null
+				});
+				continue;
+			}
+
+			if (File.Exists(filePath) && tab.IsDirty)
+			{
+				var diskContent = File.ReadAllText(filePath);
+				var draftContent = GetDraftContent(tab.DocumentId);
+				var hasConflict = draftContent is not null && diskContent != draftContent;
+				updatedTabs.Add(tab with
+				{
+					LastTouchedAt = DateTimeOffset.UtcNow,
+					HasExternalConflict = hasConflict,
+					ConflictMessage = hasConflict ? "检测到外部文件变更，当前草稿尚未同步。" : null
+				});
+				continue;
+			}
+
+			if (!File.Exists(filePath) && tab.IsDirty)
+			{
+				updatedTabs.Add(tab with
+				{
+					LastTouchedAt = DateTimeOffset.UtcNow,
+					HasExternalConflict = true,
+					ConflictMessage = "检测到外部文件被删除，当前草稿仍保留在本地。"
+				});
 				continue;
 			}
 
@@ -267,7 +297,9 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		var updated = _state.OpenTabs[index] with
 		{
 			IsDirty = false,
-			LastTouchedAt = DateTimeOffset.UtcNow
+			LastTouchedAt = DateTimeOffset.UtcNow,
+			HasExternalConflict = false,
+			ConflictMessage = null
 		};
 
 		var tabs = _state.OpenTabs.ToArray();

@@ -39,6 +39,9 @@
 						   Text="{Binding SaveFeedbackMessage}"
 						   Foreground="{Binding SaveFeedbackForeground}"
 						   FontSize="12" />
+				<TextBlock IsVisible="{Binding HasActiveDocumentConflict}"
+						   Text="{Binding ActiveDocumentConflictText}"
+						   Foreground="#B4009E" FontSize="12" />
 				<TextBlock Text="{Binding LastSaveStatus, StringFormat=最后保存状态：{0}}" Opacity="0.85" />
 				<TextBlock Text="{Binding LastSavedAtDisplay, StringFormat=最后保存时间：{0}}" Opacity="0.85" />
 				<TextBlock Text="{Binding WorkspaceSummary}" Opacity="0.85" TextWrapping="Wrap" />
