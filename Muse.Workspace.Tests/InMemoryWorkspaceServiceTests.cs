@@ -77,6 +77,30 @@ public sealed class InMemoryWorkspaceServiceTests
 		}
 	}
 
+	[Fact]
+	public void SaveDocument_ShouldClearDirtyFlag()
+	{
+		var service = new InMemoryWorkspaceService();
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			service.OpenWorkspace(root);
+			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			service.MarkDirty(tab.DocumentId, true);
+
+			var saved = service.SaveDocument(tab.DocumentId);
+			var state = service.GetState();
+
+			Assert.NotNull(saved);
+			Assert.False(saved!.IsDirty);
+			Assert.Contains(state.OpenTabs, item => item.DocumentId == tab.DocumentId && item.IsDirty == false);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
 	private static string CreateWorkspaceFixture()
 	{
 		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));

@@ -39,6 +39,12 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.Equal("doc-1", workspace.LastMarkedDocumentId);
 		Assert.True(viewModel.ActiveDocumentIsDirty);
 		Assert.Equal("脏状态：已修改", viewModel.ActiveDocumentDirtyText);
+
+		viewModel.SaveActiveDocumentCommand.Execute(null);
+
+		Assert.Equal("doc-1", workspace.LastSavedDocumentId);
+		Assert.False(viewModel.ActiveDocumentIsDirty);
+		Assert.Equal("脏状态：已保存", viewModel.ActiveDocumentDirtyText);
 	}
 
 	private sealed class FakePreviewService : IMarkdownPreviewService
@@ -66,6 +72,8 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		}
 
 		public string? LastMarkedDocumentId { get; private set; }
+
+		public string? LastSavedDocumentId { get; private set; }
 
 		public WorkspaceState OpenWorkspace(string rootPath)
 		{
@@ -109,6 +117,23 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				if (tabs[i].DocumentId == documentId)
 				{
 					tabs[i] = tabs[i] with { IsDirty = isDirty };
+					_state = _state with { OpenTabs = tabs };
+					return tabs[i];
+				}
+			}
+
+			return null;
+		}
+
+		public WorkspaceTabState? SaveDocument(string documentId)
+		{
+			LastSavedDocumentId = documentId;
+			var tabs = _state.OpenTabs.ToArray();
+			for (var i = 0; i < tabs.Length; i++)
+			{
+				if (tabs[i].DocumentId == documentId)
+				{
+					tabs[i] = tabs[i] with { IsDirty = false };
 					_state = _state with { OpenTabs = tabs };
 					return tabs[i];
 				}

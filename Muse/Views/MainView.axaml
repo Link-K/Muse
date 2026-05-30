@@ -31,6 +31,9 @@
 							IsEnabled="{Binding IsSplitMode}" />
 					<Button Content="加载当前工作区" Command="{Binding OpenCurrentWorkspaceCommand}" />
 					<Button Content="打开 Sprint2 任务卡" Command="{Binding OpenSprintTaskDocumentCommand}" />
+					<Button Content="保存当前文档"
+							Command="{Binding SaveActiveDocumentCommand}"
+							IsEnabled="{Binding CanSaveActiveDocument}" />
 				</WrapPanel>
 				<TextBlock Text="{Binding WorkspaceSummary}" Opacity="0.85" TextWrapping="Wrap" />
 			</StackPanel>

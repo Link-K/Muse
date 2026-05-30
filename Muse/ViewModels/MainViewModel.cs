@@ -84,6 +84,8 @@ public partial class MainViewModel : ViewModelBase
 
 	public string ActiveDocumentDirtyText => ActiveDocumentIsDirty ? "脏状态：已修改" : "脏状态：已保存";
 
+	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
+
 	public string WorkspaceSummary => $"工作区：{WorkspaceRootDisplay} | 标签：{OpenTabsCount} | 当前：{ActiveDocumentDisplay} | {ActiveDocumentDirtyText}";
 
 	[RelayCommand]
@@ -122,6 +124,19 @@ public partial class MainViewModel : ViewModelBase
 	private void OpenSprintTaskDocument()
 	{
 		TryOpenDefaultTaskDocument();
+	}
+
+	[RelayCommand]
+	private void SaveActiveDocument()
+	{
+		var activeDocumentId = _workspaceService.GetState().ActiveDocumentId;
+		if (string.IsNullOrWhiteSpace(activeDocumentId))
+		{
+			return;
+		}
+
+		_workspaceService.SaveDocument(activeDocumentId);
+		SyncWorkspaceState();
 	}
 
 	partial void OnCurrentModeChanged(EditorMode value)
@@ -174,6 +189,7 @@ public partial class MainViewModel : ViewModelBase
 	partial void OnActiveDocumentIsDirtyChanged(bool value)
 	{
 		OnPropertyChanged(nameof(ActiveDocumentDirtyText));
+		OnPropertyChanged(nameof(CanSaveActiveDocument));
 		OnPropertyChanged(nameof(WorkspaceSummary));
 	}
 
@@ -228,6 +244,7 @@ public partial class MainViewModel : ViewModelBase
 		OpenTabsCount = state.OpenTabs.Count;
 		ActiveDocumentDisplay = state.ActiveDocumentId ?? "无";
 		ActiveDocumentIsDirty = activeTab?.IsDirty ?? false;
+		OnPropertyChanged(nameof(CanSaveActiveDocument));
 	}
 }
 

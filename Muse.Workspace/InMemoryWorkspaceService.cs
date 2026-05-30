@@ -105,6 +105,33 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		return updated;
 	}
 
+	public WorkspaceTabState? SaveDocument(string documentId)
+	{
+		if (string.IsNullOrWhiteSpace(documentId))
+		{
+			return null;
+		}
+
+		var normalizedId = NormalizePath(documentId);
+		var index = IndexOfTab(normalizedId);
+		if (index < 0)
+		{
+			return null;
+		}
+
+		var updated = _state.OpenTabs[index] with
+		{
+			IsDirty = false,
+			LastTouchedAt = DateTimeOffset.UtcNow
+		};
+
+		var tabs = _state.OpenTabs.ToArray();
+		tabs[index] = updated;
+		_state = _state with { OpenTabs = tabs };
+
+		return updated;
+	}
+
 	public WorkspaceState GetState()
 	{
 		return _state;
