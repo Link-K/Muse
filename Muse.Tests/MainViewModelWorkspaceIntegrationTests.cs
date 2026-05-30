@@ -48,6 +48,22 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		Assert.True(viewModel.HasSaveFeedback);
 		Assert.Equal("保存成功。", viewModel.SaveFeedbackMessage);
 		Assert.False(viewModel.SaveFeedbackIsError);
+		Assert.Equal("保存成功", viewModel.LastSaveStatus);
+		Assert.NotEqual("从未保存", viewModel.LastSavedAtDisplay);
+	}
+
+	[Fact]
+	public void SaveActiveDocument_WhenNoActiveDocument_ShouldShowFailureStatus()
+	{
+		var preview = new FakePreviewService();
+		var workspace = new FakeWorkspaceService(new WorkspaceState("D:/repo", [], [], null));
+		var viewModel = new MainViewModel(preview, workspace);
+
+		viewModel.SaveActiveDocumentCommand.Execute(null);
+
+		Assert.Equal("保存失败", viewModel.LastSaveStatus);
+		Assert.True(viewModel.SaveFeedbackIsError);
+		Assert.Equal("保存失败：当前没有活动文档。", viewModel.SaveFeedbackMessage);
 	}
 
 	private sealed class FakePreviewService : IMarkdownPreviewService

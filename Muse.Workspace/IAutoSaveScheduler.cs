@@ -6,5 +6,7 @@ public interface IAutoSaveScheduler
 
 	IReadOnlyList<string> DrainScheduled();
 
+	IReadOnlyList<string> DrainReady(int maxBatchSize);
+
 	int PendingCount { get; }
 }

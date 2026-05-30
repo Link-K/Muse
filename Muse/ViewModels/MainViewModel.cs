@@ -64,6 +64,12 @@ public partial class MainViewModel : ViewModelBase
 	[ObservableProperty]
 	private bool _saveFeedbackIsError;
 
+	[ObservableProperty]
+	private DateTimeOffset? _lastSavedAt;
+
+	[ObservableProperty]
+	private string _lastSaveStatus = "未保存";
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -96,6 +102,10 @@ public partial class MainViewModel : ViewModelBase
 	public bool HasSaveFeedback => !string.IsNullOrWhiteSpace(SaveFeedbackMessage);
 
 	public string SaveFeedbackForeground => SaveFeedbackIsError ? "#D13438" : "#107C10";
+
+	public string LastSavedAtDisplay => LastSavedAt.HasValue
+		? LastSavedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+		: "从未保存";
 
 	public string WorkspaceSummary => $"工作区：{WorkspaceRootDisplay} | 标签：{OpenTabsCount} | 当前：{ActiveDocumentDisplay} | {ActiveDocumentDirtyText}";
 
@@ -145,6 +155,7 @@ public partial class MainViewModel : ViewModelBase
 		{
 			SaveFeedbackIsError = true;
 			SaveFeedbackMessage = "保存失败：当前没有活动文档。";
+			LastSaveStatus = "保存失败";
 			return;
 		}
 
@@ -153,10 +164,13 @@ public partial class MainViewModel : ViewModelBase
 		{
 			SaveFeedbackIsError = true;
 			SaveFeedbackMessage = $"保存失败：{result.Message}";
+			LastSaveStatus = $"保存失败（{result.Code}）";
 			return;
 		}
 
 		SyncWorkspaceState();
+		LastSavedAt = result.Tab?.LastTouchedAt ?? DateTimeOffset.UtcNow;
+		LastSaveStatus = "保存成功";
 		SaveFeedbackIsError = false;
 		SaveFeedbackMessage = "保存成功。";
 	}
@@ -186,7 +200,13 @@ public partial class MainViewModel : ViewModelBase
 		}
 
 		MarkActiveDocumentDirty();
+		LastSaveStatus = "有未保存更改";
 		SaveFeedbackMessage = null;
+	}
+
+	partial void OnLastSavedAtChanged(DateTimeOffset? value)
+	{
+		OnPropertyChanged(nameof(LastSavedAtDisplay));
 	}
 
 	partial void OnSaveFeedbackMessageChanged(string? value)
