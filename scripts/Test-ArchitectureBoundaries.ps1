@@ -27,6 +27,7 @@ $allowedReferences = @{
     'Muse.Android' = @('Muse')
     'Muse.Editor.Core.Tests' = @('Muse.Editor.Core')
     'Muse.Editor.Rendering.Tests' = @('Muse.Editor.Rendering')
+    'Muse.Workspace.Tests' = @('Muse.Workspace')
 }
 
 $projectFiles = Get-ChildItem -Path $repoRoot -Recurse -Filter *.csproj -File |
@@ -107,4 +108,4 @@ if ($violations.Count -gt 0) {
     exit 1
 }
 
-Write-Host "架构边界检查通过，共检查 $($projectFiles.Count) 个项目。" -ForegroundColor Green
+Write-Host ("Architecture boundaries check passed. Projects checked: {0}" -f $projectFiles.Count) -ForegroundColor Green

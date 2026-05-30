@@ -46,6 +46,8 @@
 							 AcceptsReturn="True"
 							 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
 							 Watermark="在这里输入 Markdown（后续接入渲染引擎）" />
+					<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" Opacity="0.85" />
+					<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
 				</StackPanel>
 			</Border>
 
@@ -62,7 +64,10 @@
 					</Border>
 					<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 						<ScrollViewer>
-							<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+							<StackPanel Spacing="8">
+								<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+								<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
+							</StackPanel>
 						</ScrollViewer>
 					</Border>
 				</Grid>
@@ -76,7 +81,10 @@
 					</Border>
 					<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 						<ScrollViewer>
-							<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+							<StackPanel Spacing="8">
+								<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+								<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
+							</StackPanel>
 						</ScrollViewer>
 					</Border>
 				</Grid>
@@ -91,7 +99,10 @@
 				<StackPanel Spacing="12">
 					<TextBlock Text="阅读模式：只读渲染（骨架）" FontSize="14" FontWeight="SemiBold" />
 					<ScrollViewer Height="220">
-						<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+						<StackPanel Spacing="8">
+							<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+							<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
+						</StackPanel>
 					</ScrollViewer>
 				</StackPanel>
 			</Border>

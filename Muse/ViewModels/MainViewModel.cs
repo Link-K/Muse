@@ -1,10 +1,24 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Muse.Rendering;
 
 namespace Muse.ViewModels;
 
 public partial class MainViewModel : ViewModelBase
 {
+	private readonly IMarkdownPreviewService _previewService;
+
+	public MainViewModel()
+		: this(new MarkdownPreviewService())
+	{
+	}
+
+	internal MainViewModel(IMarkdownPreviewService previewService)
+	{
+		_previewService = previewService;
+		RefreshPreview();
+	}
+
 	[ObservableProperty]
 	private EditorMode _currentMode = EditorMode.Edit;
 
@@ -16,6 +30,12 @@ public partial class MainViewModel : ViewModelBase
 
 	[ObservableProperty]
 	private int _splitSourceCaretIndex;
+
+	[ObservableProperty]
+	private string _previewText = "预览区（占位）：当前无内容";
+
+	[ObservableProperty]
+	private string? _previewDiagnostic;
 
 	public string HeaderText => CurrentMode switch
 	{
@@ -38,9 +58,9 @@ public partial class MainViewModel : ViewModelBase
 		? "当前分屏：左右"
 		: "当前分屏：上下";
 
-	public string PreviewPlaceholder => string.IsNullOrWhiteSpace(MarkdownDraft)
-		? "预览区（占位）：当前无内容"
-		: MarkdownDraft;
+	public string PreviewPlaceholder => PreviewText;
+
+	public bool HasPreviewDiagnostic => !string.IsNullOrWhiteSpace(PreviewDiagnostic);
 
 	[RelayCommand]
 	private void SwitchToEditMode()
@@ -74,6 +94,7 @@ public partial class MainViewModel : ViewModelBase
 		OnPropertyChanged(nameof(IsEditMode));
 		OnPropertyChanged(nameof(IsSplitMode));
 		OnPropertyChanged(nameof(IsReadMode));
+		RefreshPreview();
 	}
 
 	partial void OnCurrentSplitOrientationChanged(SplitOrientation value)
@@ -85,7 +106,24 @@ public partial class MainViewModel : ViewModelBase
 
 	partial void OnMarkdownDraftChanged(string value)
 	{
+		RefreshPreview();
+	}
+
+	partial void OnPreviewTextChanged(string value)
+	{
 		OnPropertyChanged(nameof(PreviewPlaceholder));
+	}
+
+	partial void OnPreviewDiagnosticChanged(string? value)
+	{
+		OnPropertyChanged(nameof(HasPreviewDiagnostic));
+	}
+
+	private void RefreshPreview()
+	{
+		var viewState = _previewService.Build(MarkdownDraft, CurrentMode, "light");
+		PreviewText = viewState.PreviewText;
+		PreviewDiagnostic = viewState.DiagnosticMessage;
 	}
 }
 
