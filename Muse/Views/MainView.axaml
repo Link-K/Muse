@@ -98,6 +98,26 @@
 				<TextBlock Text="{Binding LastSaveStatus, StringFormat=最后保存状态：{0}}" Opacity="0.85" />
 				<TextBlock Text="{Binding LastSavedAtDisplay, StringFormat=最后保存时间：{0}}" Opacity="0.85" />
 				<TextBlock Text="{Binding WorkspaceSummary}" Opacity="0.85" TextWrapping="Wrap" />
+				<Button IsVisible="{Binding IsDebugTelemetryAvailable}"
+						Content="{Binding DebugTelemetryToggleText}"
+						Command="{Binding ToggleDebugTelemetryExpandedCommand}"
+						HorizontalAlignment="Left"
+						Padding="10,4" />
+				<Border IsVisible="{Binding ShowDebugTelemetryPanel}"
+						Padding="8"
+						CornerRadius="8"
+						Background="#06FFFFFF"
+						BorderBrush="#22FFFFFF"
+						BorderThickness="1">
+					<StackPanel Spacing="6">
+						<TextBlock Text="调试诊断（仅 Debug）" FontSize="12" FontWeight="SemiBold" />
+						<TextBlock Text="{Binding DebugConflictLogFlushSummary}" FontSize="12" TextWrapping="Wrap" />
+						<Button Content="刷新统计"
+								Command="{Binding RefreshDebugTelemetryCommand}"
+								HorizontalAlignment="Left"
+								Padding="10,4" />
+					</StackPanel>
+				</Border>
 			</StackPanel>
 		</Border>
 

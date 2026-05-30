@@ -456,6 +456,44 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		}
 	}
 
+	[Fact]
+	public void DebugTelemetryPanel_ShouldToggleAndShowFlushSummary()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-DebugPanel-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+
+		try
+		{
+			var state = new WorkspaceState(
+				tempRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(tempRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+			var workspace = new FakeWorkspaceService(state);
+			var viewModel = new MainViewModel(preview, workspace, true);
+
+			Assert.True(viewModel.IsDebugTelemetryAvailable);
+			Assert.False(viewModel.ShowDebugTelemetryPanel);
+
+			viewModel.ToggleDebugTelemetryExpandedCommand.Execute(null);
+			viewModel.ToggleConflictLogScopeCommand.Execute(null);
+			viewModel.FlushConflictLogPreferencesNow();
+			viewModel.RefreshDebugTelemetryCommand.Execute(null);
+
+			Assert.True(viewModel.ShowDebugTelemetryPanel);
+			Assert.Contains("Flush 统计", viewModel.DebugConflictLogFlushSummary);
+			Assert.Contains("尝试", viewModel.DebugConflictLogFlushSummary);
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
 	private static bool WaitForConflictLogPreferences(string settingsPath, bool expectedScope, string expectedFilter, int timeoutMs = 5000)
 	{
 		var sw = Stopwatch.StartNew();

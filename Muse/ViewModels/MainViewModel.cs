@@ -171,6 +171,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	[ObservableProperty]
 	private string _latestConflictEventForeground = "#605E5C";
 
+	[ObservableProperty]
+	private bool _isDebugTelemetryExpanded;
+
 	public string HeaderText => CurrentMode switch
 	{
 		EditorMode.Edit => "编辑模式（默认）",
@@ -239,6 +242,24 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	public bool CanResetConflictLogFilters => !IsConflictLogFilteredToActiveDocument || SelectedConflictEventFilter != ConflictEventFilter.All;
 
 	public bool ShowExpandedConflictLogPanel => IsConflictLogExpanded && HasRecentConflictEvents;
+
+	public bool IsDebugTelemetryAvailable
+	{
+		get
+		{
+#if DEBUG
+			return true;
+#else
+			return false;
+#endif
+		}
+	}
+
+	public string DebugTelemetryToggleText => IsDebugTelemetryExpanded ? "收起调试诊断" : "展开调试诊断";
+
+	public bool ShowDebugTelemetryPanel => IsDebugTelemetryExpanded && IsDebugTelemetryAvailable;
+
+	public string DebugConflictLogFlushSummary => $"Flush 统计：尝试 {DebugConflictLogFlushAttemptCount} 次，失败 {DebugConflictLogFlushFailureCount} 次，最后错误：{DebugLastConflictLogFlushError ?? "无"}";
 
 	public bool CanSaveActiveDocument => ActiveDocumentIsDirty && !string.IsNullOrWhiteSpace(_workspaceService.GetState().ActiveDocumentId);
 
@@ -430,6 +451,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		}
 	}
 
+	[RelayCommand]
+	private void ToggleDebugTelemetryExpanded()
+	{
+		IsDebugTelemetryExpanded = !IsDebugTelemetryExpanded;
+	}
+
+	[RelayCommand]
+	private void RefreshDebugTelemetry()
+	{
+		OnPropertyChanged(nameof(DebugConflictLogFlushSummary));
+	}
+
 	partial void OnCurrentModeChanged(EditorMode value)
 	{
 		OnPropertyChanged(nameof(HeaderText));
@@ -492,6 +525,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	{
 		OnPropertyChanged(nameof(ConflictLogToggleText));
 		OnPropertyChanged(nameof(ShowExpandedConflictLogPanel));
+	}
+
+	partial void OnIsDebugTelemetryExpandedChanged(bool value)
+	{
+		OnPropertyChanged(nameof(DebugTelemetryToggleText));
+		OnPropertyChanged(nameof(ShowDebugTelemetryPanel));
 	}
 
 	partial void OnIsConflictLogFilteredToActiveDocumentChanged(bool value)
