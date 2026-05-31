@@ -1,8 +1,10 @@
 using System;
+using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Muse.ViewModels;
 using Muse.Services;
 
@@ -57,6 +59,75 @@ public partial class MainView : UserControl
 	{
 		// fire-and-forget the async operation; tests call CopyErrorDetailsAsync directly and await it
 		_ = CopyErrorDetailsAsync();
+	}
+
+	private async void OnBrowseDebugExportDirectoryClick(object? sender, RoutedEventArgs e)
+	{
+		if (DataContext is not MainViewModel vm)
+		{
+			return;
+		}
+
+		try
+		{
+			var topLevel = TopLevel.GetTopLevel(this);
+			if (topLevel?.StorageProvider is null)
+			{
+				vm.SaveFeedbackIsError = true;
+				vm.SaveFeedbackMessage = "当前平台不支持目录选择器，请手动输入目录。";
+				return;
+			}
+
+			var options = new FolderPickerOpenOptions
+			{
+				Title = "选择错误详情调试导出目录",
+				AllowMultiple = false
+			};
+
+			if (!string.IsNullOrWhiteSpace(vm.DebugExportDirectory))
+			{
+				try
+				{
+					var candidatePath = vm.DebugExportDirectory!;
+					if (!Path.IsPathRooted(candidatePath))
+					{
+						candidatePath = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, candidatePath));
+					}
+
+					if (Directory.Exists(candidatePath))
+					{
+						options.SuggestedStartLocation = await topLevel.StorageProvider.TryGetFolderFromPathAsync(candidatePath);
+					}
+				}
+				catch
+				{
+					// Ignore invalid path issues and let the picker use system default.
+				}
+			}
+
+			var selectedFolders = await topLevel.StorageProvider.OpenFolderPickerAsync(options);
+			if (selectedFolders.Count == 0)
+			{
+				return;
+			}
+
+			var selectedPath = selectedFolders[0].TryGetLocalPath();
+			if (string.IsNullOrWhiteSpace(selectedPath))
+			{
+				vm.SaveFeedbackIsError = true;
+				vm.SaveFeedbackMessage = "所选目录无法转换为本地路径，请手动输入目录。";
+				return;
+			}
+
+			vm.DebugExportDirectory = selectedPath;
+			vm.SaveFeedbackIsError = false;
+			vm.SaveFeedbackMessage = $"调试导出目录已更新：{selectedPath}";
+		}
+		catch (Exception ex)
+		{
+			vm.SaveFeedbackIsError = true;
+			vm.SaveFeedbackMessage = $"选择目录失败：{ex.Message}";
+		}
 	}
 
 	public async System.Threading.Tasks.Task CopyErrorDetailsAsync()

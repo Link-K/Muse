@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using Muse.Editor.Rendering;
 using Muse.ViewModels;
@@ -23,12 +24,12 @@ public sealed class MarkdownPreviewService : IMarkdownPreviewService
 			var message = result.Diagnostics.Count > 0
 				? result.Diagnostics[0].Message
 				: "渲染失败。";
-			return new PreviewViewState("预览生成失败。", true, message);
+			return new PreviewViewState("预览生成失败。", true, message, Array.Empty<RenderedBlock>());
 		}
 
 		if (result.Blocks.Count == 0)
 		{
-			return new PreviewViewState("预览区（占位）：当前无内容", false, null);
+			return new PreviewViewState("预览区（占位）：当前无内容", false, null, Array.Empty<RenderedBlock>());
 		}
 
 		var builder = new StringBuilder();
@@ -39,10 +40,12 @@ public sealed class MarkdownPreviewService : IMarkdownPreviewService
 				builder.Append('\n');
 			}
 
-			builder.Append(result.Blocks[index].Source);
+			// 使用解析器提供的 Content（已去除 Markdown 标记的语义文本），
+			// 以便在当前以 TextBlock 为主的预览区域中显示更接近渲染后的文本。
+			builder.Append(result.Blocks[index].Content);
 		}
 
-		return new PreviewViewState(builder.ToString(), false, null);
+		return new PreviewViewState(builder.ToString(), false, null, result.Blocks);
 	}
 
 	private static RenderingMode MapMode(EditorMode mode)

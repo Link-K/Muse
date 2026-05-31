@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -8,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Muse.Rendering;
 using Muse.Workspace;
+using Muse.Editor.Rendering;
 
 namespace Muse.ViewModels;
 
@@ -21,7 +23,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private bool _isHydratingDraft;
 	private bool _isLoadingConflictLogPreferences;
 	private bool _hasPendingConflictLogPreferenceSave;
-	private string? _conflictLogDebugExportDirectory;
 	private DateTimeOffset _lastConflictLogPreferenceWriteAt = DateTimeOffset.MinValue;
 	private const string MuseSettingsDirectoryName = ".muse";
 	private const string SettingsDirectoryName = "settings";
@@ -126,6 +127,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private string _previewText = "预览区（占位）：当前无内容";
 
 	[ObservableProperty]
+	private PreviewBlockViewModel[] _previewBlocks = Array.Empty<PreviewBlockViewModel>();
+
+	[ObservableProperty]
 	private string? _previewDiagnostic;
 
 	[ObservableProperty]
@@ -194,7 +198,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	[ObservableProperty]
 	private int? _conflictLogPreferenceNextRetrySeconds;
 
+	[ObservableProperty]
+	private string? _debugExportDirectory;
+
 	public bool HasConflictLogPreferenceNextRetry => ConflictLogPreferenceNextRetrySeconds.HasValue && ConflictLogPreferenceNextRetrySeconds.Value > 0;
+
+	public string DebugExportDirectorySummary => string.IsNullOrWhiteSpace(DebugExportDirectory)
+		? "调试文件将写入当前工作区 .muse/debug/error-copy.txt"
+		: $"调试文件将写入：{DebugExportDirectory}";
 
 	partial void OnConflictLogPreferenceNextRetrySecondsChanged(int? value)
 	{
@@ -638,6 +649,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		SaveConflictLogPreferences();
 	}
 
+	partial void OnDebugExportDirectoryChanged(string? value)
+	{
+		var normalized = NormalizeDebugExportDirectory(value);
+		if (!string.Equals(normalized, value, StringComparison.Ordinal))
+		{
+			DebugExportDirectory = normalized;
+			return;
+		}
+
+		OnPropertyChanged(nameof(DebugExportDirectorySummary));
+		SaveConflictLogPreferences();
+	}
+
 	partial void OnSaveFeedbackIsErrorChanged(bool value)
 	{
 		OnPropertyChanged(nameof(SaveFeedbackForeground));
@@ -681,6 +705,147 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		var viewState = _previewService.Build(MarkdownDraft, CurrentMode, "light");
 		PreviewText = viewState.PreviewText;
 		PreviewDiagnostic = viewState.DiagnosticMessage;
+
+		// Map rendering blocks into view models for per-block templating in the view.
+		PreviewBlocks = BuildPreviewBlocks(viewState.Blocks);
+	}
+
+	private static PreviewBlockViewModel[] BuildPreviewBlocks(IReadOnlyList<RenderedBlock>? blocks)
+	{
+		if (blocks is null || blocks.Count == 0)
+		{
+			return Array.Empty<PreviewBlockViewModel>();
+		}
+
+		var previewBlocks = blocks.Select(static b => new PreviewBlockViewModel(b)).ToArray();
+		ApplyAlignedTableText(previewBlocks);
+		return previewBlocks;
+	}
+
+	private static void ApplyAlignedTableText(PreviewBlockViewModel[] previewBlocks)
+	{
+		for (var i = 0; i < previewBlocks.Length;)
+		{
+			if (!previewBlocks[i].IsTableRow)
+			{
+				i++;
+				continue;
+			}
+
+			var start = i;
+			while (i < previewBlocks.Length && previewBlocks[i].IsTableRow)
+			{
+				i++;
+			}
+
+			var endExclusive = i;
+			ApplyAlignedTableTextForSegment(previewBlocks, start, endExclusive);
+		}
+	}
+
+	private static void ApplyAlignedTableTextForSegment(PreviewBlockViewModel[] previewBlocks, int startInclusive, int endExclusive)
+	{
+		var maxColumns = 0;
+		for (var i = startInclusive; i < endExclusive; i++)
+		{
+			if (!previewBlocks[i].ShowTableCells)
+			{
+				continue;
+			}
+
+			maxColumns = Math.Max(maxColumns, previewBlocks[i].TableCells.Length);
+		}
+
+		if (maxColumns == 0)
+		{
+			return;
+		}
+
+		var columnWidths = new int[maxColumns];
+		for (var i = startInclusive; i < endExclusive; i++)
+		{
+			if (!previewBlocks[i].ShowTableCells)
+			{
+				continue;
+			}
+
+			for (var col = 0; col < maxColumns; col++)
+			{
+				var cell = col < previewBlocks[i].TableCells.Length ? previewBlocks[i].TableCells[col] : string.Empty;
+				columnWidths[col] = Math.Max(columnWidths[col], cell.Length);
+			}
+		}
+
+		for (var i = startInclusive; i < endExclusive; i++)
+		{
+			if (!previewBlocks[i].ShowTableCells)
+			{
+				continue;
+			}
+
+			previewBlocks[i].SetAlignedTableDisplayText(BuildAlignedTableRow(previewBlocks[i].TableCells, columnWidths));
+		}
+
+		// Collapse one contiguous table segment into a single visual block.
+		var lines = new List<string>(endExclusive - startInclusive);
+		var tableRows = new List<PreviewTableRowViewModel>(endExclusive - startInclusive);
+		var seenDivider = false;
+		for (var i = startInclusive; i < endExclusive; i++)
+		{
+			if (previewBlocks[i].IsTableDivider)
+			{
+				lines.Add(BuildDividerRow(columnWidths));
+				tableRows.Add(new PreviewTableRowViewModel(Array.Empty<string>(), true, false));
+				seenDivider = true;
+				continue;
+			}
+
+			lines.Add(previewBlocks[i].TableDisplayText);
+			var normalizedCells = NormalizeCells(previewBlocks[i].TableCells, maxColumns);
+			tableRows.Add(new PreviewTableRowViewModel(normalizedCells, false, !seenDivider));
+		}
+
+		if (lines.Count > 0)
+		{
+			previewBlocks[startInclusive].SetAlignedTableDisplayText(string.Join("\n", lines));
+			previewBlocks[startInclusive].SetTableRows(tableRows.ToArray());
+			for (var i = startInclusive + 1; i < endExclusive; i++)
+			{
+				previewBlocks[i].SuppressRendering();
+			}
+		}
+	}
+
+	private static string BuildAlignedTableRow(string[] cells, int[] columnWidths)
+	{
+		var normalized = new string[columnWidths.Length];
+		for (var i = 0; i < columnWidths.Length; i++)
+		{
+			var cell = i < cells.Length ? cells[i] : string.Empty;
+			normalized[i] = cell.PadRight(columnWidths[i]);
+		}
+
+		return $"| {string.Join(" | ", normalized)} |";
+	}
+
+	private static string BuildDividerRow(int[] columnWidths)
+	{
+		var parts = columnWidths
+			.Select(static width => new string('-', Math.Max(3, width)))
+			.ToArray();
+
+		return $"| {string.Join(" | ", parts)} |";
+	}
+
+	private static string[] NormalizeCells(string[] cells, int columnCount)
+	{
+		var normalized = new string[columnCount];
+		for (var i = 0; i < columnCount; i++)
+		{
+			normalized[i] = i < cells.Length ? cells[i] : string.Empty;
+		}
+
+		return normalized;
 	}
 
 	private void LoadWorkspace(string rootPath)
@@ -981,7 +1146,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			_isLoadingConflictLogPreferences = true;
 			IsConflictLogFilteredToActiveDocument = preferences.IsScopeActiveDocument;
 			SelectedConflictEventFilter = ParseConflictEventFilter(preferences.EventFilter);
-			_conflictLogDebugExportDirectory = preferences.DebugExportDirectory;
+			DebugExportDirectory = NormalizeDebugExportDirectory(preferences.DebugExportDirectory);
 		}
 		catch
 		{
@@ -1075,7 +1240,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		try
 		{
 			Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-			var preferences = new ConflictLogPreferences(IsConflictLogFilteredToActiveDocument, SelectedConflictEventFilter.ToString(), _conflictLogDebugExportDirectory);
+			var preferences = new ConflictLogPreferences(IsConflictLogFilteredToActiveDocument, SelectedConflictEventFilter.ToString(), NormalizeDebugExportDirectory(DebugExportDirectory));
 			var json = JsonSerializer.Serialize(preferences, new JsonSerializerOptions { WriteIndented = true });
 			File.WriteAllText(settingsPath, json);
 			lock (_conflictLogPreferenceSaveLock)
@@ -1190,6 +1355,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		}
 
 		return ConflictEventFilter.All;
+	}
+
+	private static string? NormalizeDebugExportDirectory(string? value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return null;
+		}
+
+		return value.Trim();
 	}
 }
 

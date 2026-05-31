@@ -42,14 +42,7 @@ public partial class App : Application
 			// More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
 			DisableAvaloniaDataAnnotationValidation();
 
-			// Configure DI
-			var services = new ServiceCollection();
-			services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
-			services.AddSingleton<IFileDebugWriter, FileDebugWriter>();
-			services.AddSingleton<MainViewModel>();
-			services.AddSingleton<MainView>();
-
-			var serviceProvider = services.BuildServiceProvider();
+			var serviceProvider = BuildServiceProvider();
 			// expose provider on Application instance for runtime resolution
 			ServiceProvider = serviceProvider;
 
@@ -62,13 +55,7 @@ public partial class App : Application
 		}
 		else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
 		{
-			var services = new ServiceCollection();
-			services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
-			services.AddSingleton<IFileDebugWriter, FileDebugWriter>();
-			services.AddSingleton<MainViewModel>();
-			services.AddSingleton<MainView>();
-
-			var serviceProvider = services.BuildServiceProvider();
+			var serviceProvider = BuildServiceProvider();
 			ServiceProvider = serviceProvider;
 
 			_mainViewModel = Resolve<MainViewModel>();
@@ -90,6 +77,17 @@ public partial class App : Application
 		}
 
 		base.OnFrameworkInitializationCompleted();
+	}
+
+	private static IServiceProvider BuildServiceProvider()
+	{
+		var services = new ServiceCollection();
+		services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
+		services.AddSingleton<IFileDebugWriter, FileDebugWriter>();
+		services.AddSingleton<MainViewModel>();
+		services.AddSingleton<MainView>();
+
+		return services.BuildServiceProvider();
 	}
 
 	private void DisableAvaloniaDataAnnotationValidation()

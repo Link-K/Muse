@@ -466,6 +466,46 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	}
 
 	[Fact]
+	public void DebugExportDirectory_ShouldPersistAcrossRestart()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-DebugExportDirectory-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+
+		try
+		{
+			var state = new WorkspaceState(
+				tempRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(tempRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+
+			var workspaceA = new FakeWorkspaceService(state);
+			var viewModelA = new MainViewModel(preview, workspaceA, true);
+			viewModelA.DebugExportDirectory = "custom-debug-dir";
+			viewModelA.FlushConflictLogPreferencesNow();
+
+			var settingsPath = Path.Combine(tempRoot, ".muse", "settings", "conflict-log.json");
+			using (var doc = JsonDocument.Parse(File.ReadAllText(settingsPath)))
+			{
+				Assert.True(doc.RootElement.TryGetProperty("DebugExportDirectory", out var debugDirectoryElement));
+				Assert.Equal("custom-debug-dir", debugDirectoryElement.GetString());
+			}
+
+			var workspaceB = new FakeWorkspaceService(state);
+			var viewModelB = new MainViewModel(preview, workspaceB, true);
+			Assert.Equal("custom-debug-dir", viewModelB.DebugExportDirectory);
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
+	[Fact]
 	public void FlushConflictLogPreferencesNow_ShouldIncreaseDebugFlushAttemptCounter()
 	{
 		var preview = new FakePreviewService();
@@ -611,7 +651,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	{
 		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)
 		{
-			return new PreviewViewState(markdown, false, null);
+			return new PreviewViewState(markdown, false, null, System.Array.Empty<Muse.Editor.Rendering.RenderedBlock>());
 		}
 	}
 
