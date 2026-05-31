@@ -12,6 +12,64 @@
 		<vm:MainViewModel />
 	</Design.DataContext>
 
+	<UserControl.Resources>
+		<DataTemplate x:Key="PreviewTableRowTemplate" x:DataType="vm:PreviewTableRowViewModel">
+			<StackPanel Spacing="4">
+				<Border IsVisible="{Binding IsDivider}" Height="1" Background="#66FFFFFF" Margin="0,2" />
+				<ItemsControl IsVisible="{Binding ShowCells}" ItemsSource="{Binding CellViewModels}">
+					<ItemsControl.ItemsPanel>
+						<ItemsPanelTemplate>
+							<UniformGrid Rows="1" />
+						</ItemsPanelTemplate>
+					</ItemsControl.ItemsPanel>
+					<ItemsControl.ItemTemplate>
+						<DataTemplate x:DataType="vm:PreviewTableCellViewModel">
+							<Border Margin="0,0,6,0"
+									Padding="8,4"
+									Background="{Binding CellBackground}"
+									BorderBrush="#2AFFFFFF"
+									BorderThickness="1"
+									CornerRadius="5">
+								<TextBlock Text="{Binding Value}"
+										   FontFamily="Consolas"
+										   FontSize="12"
+										   FontWeight="{Binding CellFontWeight}"
+										   TextWrapping="Wrap" />
+							</Border>
+						</DataTemplate>
+					</ItemsControl.ItemTemplate>
+				</ItemsControl>
+			</StackPanel>
+		</DataTemplate>
+
+		<DataTemplate x:Key="PreviewBlockTemplate" x:DataType="vm:PreviewBlockViewModel">
+			<StackPanel IsVisible="{Binding IsRenderable}" Spacing="6" Margin="0,0,0,10">
+				<Border IsVisible="{Binding IsHeading}" Background="#18FFFFFF" CornerRadius="8" Padding="10,8">
+					<TextBlock Text="{Binding Content}" FontSize="18" FontWeight="Bold" />
+				</Border>
+				<Border IsVisible="{Binding IsListItem}" Background="#0FFFFFFF" CornerRadius="8" Padding="10,8">
+					<TextBlock Text="{Binding Content, StringFormat=• {0}}" TextWrapping="Wrap" />
+				</Border>
+				<Border IsVisible="{Binding IsCodeFence}" Background="#111111" CornerRadius="8" Padding="10" BorderBrush="#2B2B2B" BorderThickness="1">
+					<ScrollViewer HorizontalScrollBarVisibility="Auto">
+						<TextBlock Text="{Binding Content}"
+								   FontFamily="Consolas"
+								   Foreground="#E6E6E6"
+								   TextWrapping="NoWrap" />
+					</ScrollViewer>
+				</Border>
+				<Border IsVisible="{Binding IsTableRow}" Background="#0DFFFFFF" CornerRadius="8" Padding="10,8" BorderBrush="#22FFFFFF" BorderThickness="1">
+					<StackPanel Spacing="6">
+						<ItemsControl IsVisible="{Binding ShowTableGrid}" ItemsSource="{Binding TableRows}" ItemTemplate="{StaticResource PreviewTableRowTemplate}" />
+						<TextBlock IsVisible="{Binding ShowAlignedTableText}" Text="{Binding TableDisplayText}" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap" Opacity="0.75" />
+						<!-- Fallback plain text preview removed -->
+					</StackPanel>
+				</Border>
+				<TextBlock IsVisible="{Binding IsParagraph}" Text="{Binding Content}" TextWrapping="Wrap" Opacity="0.96" />
+			</StackPanel>
+		</DataTemplate>
+	</UserControl.Resources>
+
 	<UserControl.Styles>
 		<Style Selector="ProgressBar.retry-progress">
 			<Setter Property="Height" Value="6" />
@@ -83,6 +141,22 @@
 						   Text="{Binding ConflictEventFilterText}"
 						   Foreground="#605E5C"
 						   FontSize="12" />
+				<StackPanel Spacing="4">
+					<TextBlock Text="错误详情调试导出目录（可选）"
+							   Foreground="#605E5C"
+							   FontSize="12" />
+					<TextBox Text="{Binding DebugExportDirectory}"
+							 Watermark="留空则使用当前工作区 .muse/debug"
+							 MinWidth="320" />
+					<Button Content="选择目录"
+							Click="OnBrowseDebugExportDirectoryClick"
+							HorizontalAlignment="Left"
+							Padding="10,4" />
+					<TextBlock Text="{Binding DebugExportDirectorySummary}"
+							   Foreground="#605E5C"
+							   FontSize="11"
+							   TextWrapping="Wrap" />
+				</StackPanel>
 				<Border IsVisible="{Binding HasConflictLogPreferenceSaveError}"
 						Padding="8"
 						CornerRadius="8"
@@ -186,7 +260,7 @@
 							 AcceptsReturn="True"
 							 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
 							 Watermark="在这里输入 Markdown（后续接入渲染引擎）" />
-					<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" Opacity="0.85" />
+					<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
 					<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
 				</StackPanel>
 			</Border>
@@ -207,7 +281,7 @@
 					<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 						<ScrollViewer>
 							<StackPanel Spacing="8">
-								<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+								<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
 								<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
 							</StackPanel>
 						</ScrollViewer>
@@ -224,7 +298,7 @@
 					<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 						<ScrollViewer>
 							<StackPanel Spacing="8">
-								<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
+								<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
 								<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
 							</StackPanel>
 						</ScrollViewer>
