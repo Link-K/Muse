@@ -14,9 +14,24 @@ public partial class MainView : UserControl
 	public MainView()
 	{
 		InitializeComponent();
-		// Design-time / fallback defaults
-		ClipboardService = new AvaloniaClipboardService();
-		FileDebugWriter = new FileDebugWriter();
+		// 运行时优先从 App.Resolve<T>() 获取，设计时/测试时再回退到默认实现
+		try
+		{
+			ClipboardService = App.Resolve<IClipboardService>();
+		}
+		catch
+		{
+			ClipboardService = new AvaloniaClipboardService();
+		}
+
+		try
+		{
+			FileDebugWriter = App.Resolve<IFileDebugWriter>();
+		}
+		catch
+		{
+			FileDebugWriter = new FileDebugWriter();
+		}
 	}
 
 	// DI constructor used in production when resolving via IServiceProvider
@@ -82,8 +97,16 @@ public partial class MainView : UserControl
 			}
 			else
 			{
-				// 保持向后兼容：若未注入写入器，使用默认实现
-				var writer = new FileDebugWriter();
+				// 运行时优先从容器解析，未初始化时再回退默认实现
+				IFileDebugWriter writer;
+				try
+				{
+					writer = App.Resolve<IFileDebugWriter>();
+				}
+				catch
+				{
+					writer = new FileDebugWriter();
+				}
 				outPath = await writer.WriteDebugFileAsync(msg).ConfigureAwait(false);
 			}
 

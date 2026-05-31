@@ -19,6 +19,16 @@ public partial class App : Application
 	// Expose the DI service provider for runtime resolution (static singleton)
 	public static IServiceProvider? ServiceProvider { get; private set; }
 
+	public static T Resolve<T>() where T : notnull
+	{
+		if (ServiceProvider is null)
+		{
+			throw new InvalidOperationException("应用服务容器尚未初始化。请在应用启动完成后再解析服务。");
+		}
+
+		return ServiceProvider.GetRequiredService<T>();
+	}
+
 	public override void Initialize()
 	{
 		AvaloniaXamlLoader.Load(this);
@@ -43,10 +53,10 @@ public partial class App : Application
 			// expose provider on Application instance for runtime resolution
 			ServiceProvider = serviceProvider;
 
-			_mainViewModel = serviceProvider.GetRequiredService<MainViewModel>();
+			_mainViewModel = Resolve<MainViewModel>();
 
 			var mainWindow = new MainWindow();
-			var mainView = serviceProvider.GetRequiredService<MainView>();
+			var mainView = Resolve<MainView>();
 			mainWindow.Content = mainView;
 			desktop.MainWindow = mainWindow;
 		}
@@ -61,8 +71,8 @@ public partial class App : Application
 			var serviceProvider = services.BuildServiceProvider();
 			ServiceProvider = serviceProvider;
 
-			_mainViewModel = serviceProvider.GetRequiredService<MainViewModel>();
-			var mv = serviceProvider.GetRequiredService<MainView>();
+			_mainViewModel = Resolve<MainViewModel>();
+			var mv = Resolve<MainView>();
 			singleViewPlatform.MainView = mv;
 		}
 

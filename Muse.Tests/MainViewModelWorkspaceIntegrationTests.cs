@@ -423,6 +423,49 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	}
 
 	[Fact]
+	public void ConflictLogPreferences_ShouldPreserveDebugExportDirectoryWhenSaving()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-ConflictLogPrefs-DebugExport-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+
+		try
+		{
+			var settingsDir = Path.Combine(tempRoot, ".muse", "settings");
+			Directory.CreateDirectory(settingsDir);
+			var settingsPath = Path.Combine(settingsDir, "conflict-log.json");
+			File.WriteAllText(settingsPath, JsonSerializer.Serialize(new
+			{
+				IsScopeActiveDocument = true,
+				EventFilter = "All",
+				DebugExportDirectory = "custom-debug"
+			}, new JsonSerializerOptions { WriteIndented = true }));
+
+			var state = new WorkspaceState(
+				tempRoot,
+				[],
+				[new WorkspaceTabState("doc-1", Path.Combine(tempRoot, "files", "a.md").Replace('\\', '/'), true, DateTimeOffset.UtcNow)],
+				"doc-1");
+
+			var workspace = new FakeWorkspaceService(state);
+			var viewModel = new MainViewModel(preview, workspace, true);
+			viewModel.ToggleConflictLogScopeCommand.Execute(null);
+			viewModel.FlushConflictLogPreferencesNow();
+
+			using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+			Assert.True(doc.RootElement.TryGetProperty("DebugExportDirectory", out var debugDirectoryElement));
+			Assert.Equal("custom-debug", debugDirectoryElement.GetString());
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
+	[Fact]
 	public void FlushConflictLogPreferencesNow_ShouldIncreaseDebugFlushAttemptCounter()
 	{
 		var preview = new FakePreviewService();
