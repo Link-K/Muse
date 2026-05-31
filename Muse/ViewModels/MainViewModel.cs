@@ -21,6 +21,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private bool _isHydratingDraft;
 	private bool _isLoadingConflictLogPreferences;
 	private bool _hasPendingConflictLogPreferenceSave;
+	private string? _conflictLogDebugExportDirectory;
 	private DateTimeOffset _lastConflictLogPreferenceWriteAt = DateTimeOffset.MinValue;
 	private const string MuseSettingsDirectoryName = ".muse";
 	private const string SettingsDirectoryName = "settings";
@@ -980,6 +981,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			_isLoadingConflictLogPreferences = true;
 			IsConflictLogFilteredToActiveDocument = preferences.IsScopeActiveDocument;
 			SelectedConflictEventFilter = ParseConflictEventFilter(preferences.EventFilter);
+			_conflictLogDebugExportDirectory = preferences.DebugExportDirectory;
 		}
 		catch
 		{
@@ -1073,7 +1075,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		try
 		{
 			Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-			var preferences = new ConflictLogPreferences(IsConflictLogFilteredToActiveDocument, SelectedConflictEventFilter.ToString());
+			var preferences = new ConflictLogPreferences(IsConflictLogFilteredToActiveDocument, SelectedConflictEventFilter.ToString(), _conflictLogDebugExportDirectory);
 			var json = JsonSerializer.Serialize(preferences, new JsonSerializerOptions { WriteIndented = true });
 			File.WriteAllText(settingsPath, json);
 			lock (_conflictLogPreferenceSaveLock)
@@ -1214,4 +1216,4 @@ public enum ConflictEventFilter
 
 public sealed record ConflictEventListItem(string Text, string Foreground);
 
-public sealed record ConflictLogPreferences(bool IsScopeActiveDocument, string EventFilter);
+public sealed record ConflictLogPreferences(bool IsScopeActiveDocument, string EventFilter, string? DebugExportDirectory = null);

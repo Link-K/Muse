@@ -62,7 +62,7 @@ namespace Muse.Tests
 			var method = typeof(MainView).GetMethod("CopyErrorDetailsAsync", BindingFlags.Public | BindingFlags.Instance);
 			Assert.NotNull(method);
 			var invokedTask = (System.Threading.Tasks.Task)method.Invoke(view, Array.Empty<object>())!;
-			await invokedTask.ConfigureAwait(false);
+			await invokedTask;
 
 			// Prefer clipboard; fall back to file. If clipboard not available in test env,
 			// the implementation always writes a debug file as fallback.
@@ -89,7 +89,7 @@ namespace Muse.Tests
 						if (getText is not null)
 						{
 							var task2 = (System.Threading.Tasks.Task)getText.Invoke(clipboard, new object[] { })!;
-							await task2.ConfigureAwait(false);
+							await task2;
 							var resultProp = task2.GetType().GetProperty("Result");
 							if (resultProp is not null)
 							{
