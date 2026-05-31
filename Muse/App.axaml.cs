@@ -1,3 +1,4 @@
+using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
@@ -8,12 +9,15 @@ using Avalonia.Markup.Xaml;
 using Muse.ViewModels;
 using Muse.Views;
 using Muse.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Muse;
 
 public partial class App : Application
 {
 	private MainViewModel? _mainViewModel;
+	// Expose the DI service provider for runtime resolution (static singleton)
+	public static IServiceProvider? ServiceProvider { get; private set; }
 
 	public override void Initialize()
 	{
@@ -27,29 +31,38 @@ public partial class App : Application
 			// Avoid duplicate validations from both Avalonia and the CommunityToolkit.
 			// More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
 			DisableAvaloniaDataAnnotationValidation();
-			_mainViewModel = new MainViewModel();
-			var clipboardService = new AvaloniaClipboardService();
-			var mainWindow = new MainWindow
-			{
-				DataContext = _mainViewModel
-			};
-			// Try to locate the MainView instance inside the window to inject the clipboard service
-			// MainWindow's content is the MainView instance defined in XAML
-			if (mainWindow.Content is MainView mvRoot)
-			{
-				mvRoot.ClipboardService = clipboardService;
-			}
+
+			// Configure DI
+			var services = new ServiceCollection();
+			services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
+			services.AddSingleton<IFileDebugWriter, FileDebugWriter>();
+			services.AddSingleton<MainViewModel>();
+			services.AddSingleton<MainView>();
+
+			var serviceProvider = services.BuildServiceProvider();
+			// expose provider on Application instance for runtime resolution
+			ServiceProvider = serviceProvider;
+
+			_mainViewModel = serviceProvider.GetRequiredService<MainViewModel>();
+
+			var mainWindow = new MainWindow();
+			var mainView = serviceProvider.GetRequiredService<MainView>();
+			mainWindow.Content = mainView;
 			desktop.MainWindow = mainWindow;
 		}
 		else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
 		{
-			_mainViewModel = new MainViewModel();
-			var clipboardService = new AvaloniaClipboardService();
-			var mv = new MainView
-			{
-				DataContext = _mainViewModel,
-				ClipboardService = clipboardService
-			};
+			var services = new ServiceCollection();
+			services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
+			services.AddSingleton<IFileDebugWriter, FileDebugWriter>();
+			services.AddSingleton<MainViewModel>();
+			services.AddSingleton<MainView>();
+
+			var serviceProvider = services.BuildServiceProvider();
+			ServiceProvider = serviceProvider;
+
+			_mainViewModel = serviceProvider.GetRequiredService<MainViewModel>();
+			var mv = serviceProvider.GetRequiredService<MainView>();
 			singleViewPlatform.MainView = mv;
 		}
 

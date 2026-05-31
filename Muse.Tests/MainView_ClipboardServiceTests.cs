@@ -53,14 +53,13 @@ namespace Muse.Tests
 			view.DataContext = vm;
 			view.ClipboardService = new FakeClipboardSuccess();
 
+			var fakeWriter = new TestFileWriter();
+			view.FileDebugWriter = fakeWriter;
+
 			await view.CopyErrorDetailsAsync();
 
-			var debugDir = Path.Combine(_tempDir, ".muse", "debug");
-			var outPath = Path.Combine(debugDir, "error-copy.txt");
-
-			Assert.True(File.Exists(outPath), "Fallback debug file should be written even when clipboard succeeds.");
-			var content = File.ReadAllText(outPath);
-			Assert.Equal("测试剪贴板成功", content);
+			Assert.NotNull(fakeWriter.WrittenPath);
+			Assert.Equal("测试剪贴板成功", fakeWriter.WrittenContent);
 
 			Assert.False(vm.SaveFeedbackIsError);
 			Assert.Contains("已复制到剪贴板", vm.SaveFeedbackMessage);
@@ -76,18 +75,31 @@ namespace Muse.Tests
 			view.DataContext = vm;
 			view.ClipboardService = new FakeClipboardFailure();
 
+			var fakeWriter = new TestFileWriter();
+			view.FileDebugWriter = fakeWriter;
+
 			await view.CopyErrorDetailsAsync();
 
-			var debugDir = Path.Combine(_tempDir, ".muse", "debug");
-			var outPath = Path.Combine(debugDir, "error-copy.txt");
-
-			Assert.True(File.Exists(outPath), "Fallback debug file should be written when clipboard fails.");
-			var content = File.ReadAllText(outPath);
-			Assert.Equal("测试剪贴板失败", content);
+			Assert.NotNull(fakeWriter.WrittenPath);
+			Assert.Equal("测试剪贴板失败", fakeWriter.WrittenContent);
 
 			Assert.False(vm.SaveFeedbackIsError);
 			Assert.Contains("已写入", vm.SaveFeedbackMessage);
 			Assert.Contains("error-copy.txt", vm.SaveFeedbackMessage);
+		}
+
+
+		private class TestFileWriter : Muse.Services.IFileDebugWriter
+		{
+			public string? WrittenPath { get; private set; }
+			public string? WrittenContent { get; private set; }
+
+			public System.Threading.Tasks.Task<string?> WriteDebugFileAsync(string content)
+			{
+				WrittenContent = content;
+				WrittenPath = System.IO.Path.Combine(Environment.CurrentDirectory, ".muse", "debug", "error-copy.txt");
+				return System.Threading.Tasks.Task.FromResult<string?>(WrittenPath);
+			}
 		}
 	}
 }

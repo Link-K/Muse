@@ -8,5 +8,5 @@
 		x:Class="Muse.Views.MainWindow"
 		Icon="/Assets/avalonia-logo.ico"
 		Title="Muse">
-	<views:MainView x:Name="MainViewRoot" />
+	<!-- MainView is created via DI in App.axaml.cs and assigned to Window.Content -->
 </Window>

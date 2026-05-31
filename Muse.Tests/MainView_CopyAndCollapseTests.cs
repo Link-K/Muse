@@ -54,6 +54,10 @@ namespace Muse.Tests
 			var view = new MainView();
 			view.DataContext = vm;
 
+			// 注入假写入器以避免实际磁盘 I/O
+			var fakeWriter = new TestFileWriter();
+			view.FileDebugWriter = fakeWriter;
+
 			// invoke async copy method via reflection and await it
 			var method = typeof(MainView).GetMethod("CopyErrorDetailsAsync", BindingFlags.Public | BindingFlags.Instance);
 			Assert.NotNull(method);
@@ -62,13 +66,13 @@ namespace Muse.Tests
 
 			// Prefer clipboard; fall back to file. If clipboard not available in test env,
 			// the implementation always writes a debug file as fallback.
-			var outPath = Path.Combine(_tempDir, ".muse", "debug", "error-copy.txt");
-			if (File.Exists(outPath))
-			{
-				var content = File.ReadAllText(outPath);
-				Assert.Equal("测试写入文件内容", content);
-			}
-			else
+			var outPath = fakeWriter.WrittenPath;
+			Assert.NotNull(outPath);
+			var content = fakeWriter.WrittenContent;
+			Assert.Equal("测试写入文件内容", content);
+
+			// 若剪贴板可用，也允许为空或匹配
+			if (outPath == null)
 			{
 				// try to read clipboard via reflection; if available, assert value
 				var appType = Type.GetType("Avalonia.Application, Avalonia");
@@ -97,6 +101,19 @@ namespace Muse.Tests
 				catch { }
 
 				Assert.True(clipText == "测试写入文件内容" || clipText == null, "Clipboard content mismatch or unavailable in test env.");
+			}
+		}
+
+		private class TestFileWriter : Muse.Services.IFileDebugWriter
+		{
+			public string? WrittenPath { get; private set; }
+			public string? WrittenContent { get; private set; }
+
+			public System.Threading.Tasks.Task<string?> WriteDebugFileAsync(string content)
+			{
+				WrittenContent = content;
+				WrittenPath = System.IO.Path.Combine(Environment.CurrentDirectory, ".muse", "debug", "error-copy.txt");
+				return System.Threading.Tasks.Task.FromResult<string?>(WrittenPath);
 			}
 		}
 	}
