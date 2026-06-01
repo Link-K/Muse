@@ -104,6 +104,20 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		return updated;
 	}
 
+	public bool CloseDocument(string documentId)
+	{
+		if (string.IsNullOrWhiteSpace(documentId)) return false;
+		var normalizedId = NormalizePath(documentId);
+		var tabs = _state.OpenTabs.ToList();
+		var index = tabs.FindIndex(t => t.DocumentId == normalizedId);
+		if (index < 0) return false;
+		tabs.RemoveAt(index);
+		string? newActive = tabs.Count > 0 ? tabs[Math.Max(0, index - 1)].DocumentId : null;
+		_state = _state with { OpenTabs = tabs, ActiveDocumentId = newActive };
+		RaiseWorkspaceChanged();
+		return true;
+	}
+
 	public WorkspaceTabState? MarkDirty(string documentId, bool isDirty = true)
 	{
 		if (string.IsNullOrWhiteSpace(documentId))

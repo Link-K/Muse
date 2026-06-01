@@ -8,6 +8,8 @@ public interface IWorkspaceService
 
 	WorkspaceTabState OpenDocument(string filePath);
 
+	bool CloseDocument(string documentId);
+
 	WorkspaceTabState? ActivateDocument(string documentId);
 
 	WorkspaceTabState? MarkDirty(string documentId, bool isDirty = true);

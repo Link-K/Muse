@@ -11,6 +11,45 @@ namespace Muse.Tests;
 public sealed class MainViewModelWorkspaceIntegrationTests
 {
 	[Fact]
+	public void CloseTab_ShouldRemoveTabFromWorkspace()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", false, DateTimeOffset.UtcNow), new WorkspaceTabState("doc-2", "D:/repo/files/b.md", false, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		var viewModel = new MainViewModel(preview, workspace);
+
+		// ensure tabs present
+		Assert.Equal(2, viewModel.WorkspaceTabs.Length);
+
+		viewModel.CloseTabCommand.Execute("doc-1");
+
+		Assert.Single(viewModel.WorkspaceTabs);
+		Assert.DoesNotContain(viewModel.WorkspaceTabs, t => t.DocumentId == "doc-1");
+	}
+
+	[Fact]
+	public void TabIndicators_ShouldReflectDirtyAndConflictFlags()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", true, DateTimeOffset.UtcNow) with { HasExternalConflict = true }],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		var viewModel = new MainViewModel(preview, workspace);
+
+		Assert.Single(viewModel.WorkspaceTabs);
+		var tab = viewModel.WorkspaceTabs[0];
+		Assert.True(tab.IsDirty);
+		Assert.True(tab.HasExternalConflict);
+	}
+
+	[Fact]
 	public void OpenCurrentWorkspaceCommand_ShouldRefreshWorkspaceSummary()
 	{
 		var preview = new FakePreviewService();
@@ -705,6 +744,17 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			};
 			RaiseWorkspaceChanged();
 			return tab;
+		}
+
+		public bool CloseDocument(string documentId)
+		{
+			var tabs = _state.OpenTabs.ToList();
+			var index = tabs.FindIndex(t => t.DocumentId == documentId);
+			if (index < 0) return false;
+			tabs.RemoveAt(index);
+			_state = _state with { OpenTabs = tabs, ActiveDocumentId = tabs.Count > 0 ? tabs[Math.Max(0, index - 1)].DocumentId : null };
+			RaiseWorkspaceChanged();
+			return true;
 		}
 
 		public WorkspaceTabState? ActivateDocument(string documentId)

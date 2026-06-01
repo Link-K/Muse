@@ -136,6 +136,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private string _workspaceRootDisplay = "未加载";
 
 	[ObservableProperty]
+	private FileTreeNodeViewModel[] _fileTree = Array.Empty<FileTreeNodeViewModel>();
+
+	[ObservableProperty]
+	private WorkspaceTabState[] _workspaceTabs = Array.Empty<WorkspaceTabState>();
+
+	[ObservableProperty]
 	private int _openTabsCount;
 
 	[ObservableProperty]
@@ -350,6 +356,39 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private void OpenCurrentWorkspace()
 	{
 		LoadWorkspace(Environment.CurrentDirectory);
+	}
+
+	[RelayCommand]
+	private void OpenFileNode(FileTreeNode node)
+	{
+		if (node == null || node.IsDirectory)
+		{
+			return;
+		}
+
+		_workspaceService.OpenDocument(node.Path);
+		SyncWorkspaceState();
+		LoadActiveDocumentContent();
+	}
+
+	[RelayCommand]
+	private void ActivateTab(string documentId)
+	{
+		if (string.IsNullOrWhiteSpace(documentId)) return;
+		_workspaceService.ActivateDocument(documentId);
+		SyncWorkspaceState();
+		LoadActiveDocumentContent();
+	}
+
+	[RelayCommand]
+	private void CloseTab(string documentId)
+	{
+		if (string.IsNullOrWhiteSpace(documentId)) return;
+		if (_workspaceService.CloseDocument(documentId))
+		{
+			SyncWorkspaceState();
+			LoadActiveDocumentContent();
+		}
 	}
 
 	[RelayCommand]
@@ -1120,11 +1159,48 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		ActiveDocumentIsDirty = activeTab?.IsDirty ?? false;
 		ActiveDocumentHasExternalConflict = activeTab?.HasExternalConflict ?? false;
 		ActiveDocumentConflictMessage = activeTab?.ConflictMessage;
+
+		// Expose file tree and open tabs for UI
+		FileTree = (state.FileTree is null) ? Array.Empty<FileTreeNodeViewModel>() : CreateTreeViewModels(state.FileTree);
+		WorkspaceTabs = state.OpenTabs.ToArray();
+
 		OnPropertyChanged(nameof(CanSaveActiveDocument));
 		OnPropertyChanged(nameof(ActiveDocumentConflictText));
 		OnPropertyChanged(nameof(HasActiveDocumentConflict));
 		OnPropertyChanged(nameof(WorkspaceSummary));
 	}
+
+	private FileTreeNodeViewModel[] CreateTreeViewModels(IReadOnlyList<Muse.Workspace.FileTreeNode> nodes)
+	{
+		var list = new List<FileTreeNodeViewModel>(nodes.Count);
+		foreach (var n in nodes)
+		{
+			var vm = new FileTreeNodeViewModel(n.Path, n.Name, n.IsDirectory, OpenFileNodeFromViewModel);
+			if (n.Children != null && n.Children.Count > 0)
+			{
+				// recursively add children
+				foreach (var c in n.Children)
+				{
+					var childVms = CreateTreeViewModels(new[] { c });
+					foreach (var cv in childVms)
+					{
+						vm.Children.Add(cv);
+					}
+				}
+			}
+			list.Add(vm);
+		}
+		return list.ToArray();
+	}
+
+	private void OpenFileNodeFromViewModel(FileTreeNodeViewModel vm)
+	{
+		if (vm == null || vm.IsDirectory) return;
+		_workspaceService.OpenDocument(vm.Path);
+		SyncWorkspaceState();
+		LoadActiveDocumentContent();
+	}
+
 
 	private void LoadConflictLogPreferences()
 	{
