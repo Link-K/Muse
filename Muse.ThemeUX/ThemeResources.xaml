@@ -7,7 +7,7 @@
   <SolidColorBrush x:Key="IconForeground" Color="#9AA0A6" />
 
   <!-- Icon font family and glyphs -->
-  <x:String x:Key="IconFontFamily">Segoe MDL2 Assets</x:String>
+  <FontFamily x:Key="IconFontFamily">Segoe MDL2 Assets</FontFamily>
   <x:String x:Key="TabDirtyGlyph">●</x:String>
   <x:String x:Key="TabConflictGlyph">⚠</x:String>
   <x:String x:Key="TabCloseGlyph">✕</x:String>
