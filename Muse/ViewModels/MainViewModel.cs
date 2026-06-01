@@ -139,7 +139,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private FileTreeNodeViewModel[] _fileTree = Array.Empty<FileTreeNodeViewModel>();
 
 	[ObservableProperty]
-	private WorkspaceTabState[] _workspaceTabs = Array.Empty<WorkspaceTabState>();
+	private WorkspaceTabViewModel[] _workspaceTabs = Array.Empty<WorkspaceTabViewModel>();
 
 	[ObservableProperty]
 	private int _openTabsCount;
@@ -1162,7 +1162,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
 		// Expose file tree and open tabs for UI
 		FileTree = (state.FileTree is null) ? Array.Empty<FileTreeNodeViewModel>() : CreateTreeViewModels(state.FileTree);
-		WorkspaceTabs = state.OpenTabs.ToArray();
+		WorkspaceTabs = state.OpenTabs.Select(t => new WorkspaceTabViewModel(t, t.DocumentId == state.ActiveDocumentId)).ToArray();
 
 		OnPropertyChanged(nameof(CanSaveActiveDocument));
 		OnPropertyChanged(nameof(ActiveDocumentConflictText));

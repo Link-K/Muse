@@ -6,6 +6,8 @@ public sealed record WorkspaceTabState(
 	bool IsDirty,
 	DateTimeOffset LastTouchedAt)
 {
+	public string FileName => System.IO.Path.GetFileName(FilePath);
+
 	public bool HasExternalConflict { get; init; }
 
 	public string? ConflictMessage { get; init; }

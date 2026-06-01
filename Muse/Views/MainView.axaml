@@ -296,30 +296,41 @@
 					<ScrollViewer Grid.Row="3" MaxHeight="250" HorizontalScrollBarVisibility="Auto">
 						<ItemsControl ItemsSource="{Binding WorkspaceTabs}">
 							<ItemsControl.ItemTemplate>
-								<DataTemplate x:DataType="ws:WorkspaceTabState">
-									<StackPanel Orientation="Horizontal" Spacing="8">
-										<TextBlock Text="{Binding FilePath}" TextTrimming="CharacterEllipsis" Width="140" Foreground="{StaticResource TreeForeground}" />
+								<DataTemplate x:DataType="vm:WorkspaceTabViewModel">
+									<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
+										<Button Command="{Binding DataContext.ActivateTabCommand, ElementName=Root}"
+												CommandParameter="{Binding DocumentId}"
+												Background="Transparent"
+												BorderThickness="0"
+												Padding="0"
+												Cursor="Hand">
+											<TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis" Width="120" Foreground="{StaticResource TreeForeground}" VerticalAlignment="Center" />
+										</Button>
 										<TextBlock Text="{StaticResource TabDirtyGlyph}"
 												   Foreground="{StaticResource TabDirtyForeground}"
 												   IsVisible="{Binding IsDirty}"
 												   FontFamily="{StaticResource IconFontFamily}"
-												   FontSize="{StaticResource IconSmallSize}"
+												   FontSize="10"
+												   VerticalAlignment="Center"
 												   ToolTip.Tip="未保存" />
 										<TextBlock Text="{StaticResource TabConflictGlyph}"
 												   Foreground="{StaticResource TabConflictForeground}"
 												   IsVisible="{Binding HasExternalConflict}"
 												   FontFamily="{StaticResource IconFontFamily}"
-												   FontSize="{StaticResource IconSmallSize}"
-												   ToolTip.Tip="存在外部冲突"
-												   Margin="6,0" />
-										<Button Content="激活" Command="{Binding DataContext.ActivateTabCommand, ElementName=Root}" CommandParameter="{Binding DocumentId}" Padding="6,2" />
+												   FontSize="10"
+												   VerticalAlignment="Center"
+												   ToolTip.Tip="存在外部冲突" />
 										<Button Command="{Binding DataContext.CloseTabCommand, ElementName=Root}"
 												CommandParameter="{Binding DocumentId}"
-												Padding="6,2"
+												Background="Transparent"
+												BorderThickness="0"
+												Padding="4"
+												CornerRadius="4"
+												Cursor="Hand"
 												ToolTip.Tip="关闭标签">
 											<TextBlock Text="{StaticResource TabCloseGlyph}"
 													   FontFamily="{StaticResource IconFontFamily}"
-													   FontSize="{StaticResource IconSmallSize}" />
+													   FontSize="10" />
 										</Button>
 									</StackPanel>
 								</DataTemplate>
@@ -341,107 +352,149 @@
 									<StackPanel Orientation="Horizontal" />
 								</ItemsPanelTemplate>
 							</ItemsControl.ItemsPanel>
+							<ItemsControl.Styles>
+								<Style Selector="Border.tab">
+									<Setter Property="Background" Value="#1AFFFFFF" />
+									<Setter Property="BorderBrush" Value="#2FFFFFFF" />
+								</Style>
+								<Style Selector="Border.tab.active">
+									<Setter Property="Background" Value="#3FFFFFFF" />
+									<Setter Property="BorderBrush" Value="#4FFFFFFF" />
+								</Style>
+								<Style Selector="Border.tab:pointerover">
+									<Setter Property="Background" Value="#2AFFFFFF" />
+								</Style>
+							</ItemsControl.Styles>
 							<ItemsControl.ItemTemplate>
-								<DataTemplate x:DataType="ws:WorkspaceTabState">
-									<StackPanel Orientation="Horizontal" Spacing="8" Margin="4,4">
-										<TextBlock Text="{Binding FilePath}" TextTrimming="CharacterEllipsis" Width="220" Foreground="{StaticResource TreeForeground}" />
-										<Button Command="{Binding DataContext.ActivateTabCommand, ElementName=Root}" CommandParameter="{Binding DocumentId}" Padding="6,2">激活</Button>
-										<Button Command="{Binding DataContext.CloseTabCommand, ElementName=Root}" CommandParameter="{Binding DocumentId}" Padding="6,2">
-											<TextBlock Text="{StaticResource TabCloseGlyph}" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource IconSmallSize}" />
-										</Button>
-									</StackPanel>
+								<DataTemplate x:DataType="vm:WorkspaceTabViewModel">
+									<Border Classes="tab" Classes.active="{Binding IsActive}" CornerRadius="6,6,0,0" Margin="0,0,4,0" Padding="8,4" BorderThickness="1,1,1,0">
+										<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+											<TextBlock Text="{StaticResource TabDirtyGlyph}"
+													   Foreground="{StaticResource TabDirtyForeground}"
+													   IsVisible="{Binding IsDirty}"
+													   FontFamily="{StaticResource IconFontFamily}"
+													   FontSize="10"
+													   VerticalAlignment="Center"
+													   ToolTip.Tip="未保存" />
+											<TextBlock Text="{StaticResource TabConflictGlyph}"
+													   Foreground="{StaticResource TabConflictForeground}"
+													   IsVisible="{Binding HasExternalConflict}"
+													   FontFamily="{StaticResource IconFontFamily}"
+													   FontSize="10"
+													   VerticalAlignment="Center"
+													   ToolTip.Tip="存在外部冲突" />
+											<Button Command="{Binding DataContext.ActivateTabCommand, ElementName=Root}"
+													CommandParameter="{Binding DocumentId}"
+													Background="Transparent"
+													BorderThickness="0"
+													Padding="0"
+													Cursor="Hand">
+												<TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis" MaxWidth="140" Foreground="{StaticResource TreeForeground}" VerticalAlignment="Center" />
+											</Button>
+											<Button Command="{Binding DataContext.CloseTabCommand, ElementName=Root}"
+													CommandParameter="{Binding DocumentId}"
+													Background="Transparent"
+													BorderThickness="0"
+													Padding="4"
+													CornerRadius="4"
+													Cursor="Hand"
+													ToolTip.Tip="关闭标签">
+												<TextBlock Text="{StaticResource TabCloseGlyph}" FontFamily="{StaticResource IconFontFamily}" FontSize="10" />
+											</Button>
+										</StackPanel>
+									</Border>
 								</DataTemplate>
 							</ItemsControl.ItemTemplate>
 						</ItemsControl>
 					</ScrollViewer>
-				
+
 					<!-- 主面板（编辑/分屏/阅读） -->
 					<Panel>
-					<Border IsVisible="{Binding IsEditMode}"
-							Padding="16"
-							CornerRadius="12"
-							Background="#0FFFFFFF"
-							BorderBrush="#2FFFFFFF"
-							BorderThickness="1">
-						<Grid RowDefinitions="Auto, *">
-							<TextBlock Grid.Row="0" Text="编辑模式：所见即所得（骨架）" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
-							<ScrollViewer Grid.Row="1">
-								<StackPanel Spacing="12">
-									<TextBox MinHeight="220"
-											 AcceptsReturn="True"
+						<Border IsVisible="{Binding IsEditMode}"
+								Padding="16"
+								CornerRadius="12"
+								Background="#0FFFFFFF"
+								BorderBrush="#2FFFFFFF"
+								BorderThickness="1">
+							<Grid RowDefinitions="Auto, *">
+								<TextBlock Grid.Row="0" Text="编辑模式：所见即所得（骨架）" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
+								<ScrollViewer Grid.Row="1">
+									<StackPanel Spacing="12">
+										<TextBox MinHeight="220"
+												 AcceptsReturn="True"
+												 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+												 Watermark="在这里输入 Markdown（后续接入渲染引擎）" />
+										<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
+										<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
+									</StackPanel>
+								</ScrollViewer>
+							</Grid>
+						</Border>
+
+						<Grid IsVisible="{Binding IsSplitMode}" RowDefinitions="Auto, Auto, *">
+							<TextBlock Grid.Row="0" Text="分屏模式：源码 + 预览（骨架）" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
+							<WrapPanel Grid.Row="1" Margin="0,0,0,8">
+								<TextBlock Text="{Binding SplitOrientationText}" Opacity="0.85" Margin="0,0,12,0"/>
+								<TextBlock Text="{Binding ActiveDocumentDisplay, StringFormat=活动文档：{0}}" Opacity="0.85" Margin="0,0,12,0"/>
+								<TextBlock Text="{Binding ActiveDocumentDirtyText}" Opacity="0.85" />
+							</WrapPanel>
+
+							<Grid Grid.Row="2" IsVisible="{Binding IsSplitHorizontal}" ColumnDefinitions="*,8,*">
+								<Border Grid.Column="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+									<TextBox AcceptsReturn="True"
 											 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-											 Watermark="在这里输入 Markdown（后续接入渲染引擎）" />
-									<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
-									<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
-								</StackPanel>
-							</ScrollViewer>
+											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
+											 Watermark="左侧源码区（占位）" />
+								</Border>
+								<Border Grid.Column="1" Background="Transparent" Width="8" />
+								<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+									<ScrollViewer>
+										<StackPanel Spacing="8">
+											<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
+											<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
+										</StackPanel>
+									</ScrollViewer>
+								</Border>
+							</Grid>
+
+							<Grid Grid.Row="2" IsVisible="{Binding IsSplitVertical}" RowDefinitions="*,8,*">
+								<Border Grid.Row="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+									<TextBox AcceptsReturn="True"
+											 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
+											 Watermark="上方源码区（占位）" />
+								</Border>
+								<Border Grid.Row="1" Background="Transparent" Height="8" />
+								<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
+									<ScrollViewer>
+										<StackPanel Spacing="8">
+											<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
+											<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
+										</StackPanel>
+									</ScrollViewer>
+								</Border>
+							</Grid>
 						</Grid>
-					</Border>
 
-					<Grid IsVisible="{Binding IsSplitMode}" RowDefinitions="Auto, Auto, *">
-						<TextBlock Grid.Row="0" Text="分屏模式：源码 + 预览（骨架）" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
-						<WrapPanel Grid.Row="1" Margin="0,0,0,8">
-							<TextBlock Text="{Binding SplitOrientationText}" Opacity="0.85" Margin="0,0,12,0"/>
-							<TextBlock Text="{Binding ActiveDocumentDisplay, StringFormat=活动文档：{0}}" Opacity="0.85" Margin="0,0,12,0"/>
-							<TextBlock Text="{Binding ActiveDocumentDirtyText}" Opacity="0.85" />
-						</WrapPanel>
-
-						<Grid Grid.Row="2" IsVisible="{Binding IsSplitHorizontal}" ColumnDefinitions="*,8,*">
-							<Border Grid.Column="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-								<TextBox AcceptsReturn="True"
-										 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-										 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
-										 Watermark="左侧源码区（占位）" />
-							</Border>
-							<Border Grid.Column="1" Background="Transparent" Width="8" />
-							<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-								<ScrollViewer>
+						<Border IsVisible="{Binding IsReadMode}"
+								Padding="16"
+								CornerRadius="12"
+								Background="#0FFFFFFF"
+								BorderBrush="#2FFFFFFF"
+								BorderThickness="1">
+							<Grid RowDefinitions="Auto, *">
+								<TextBlock Grid.Row="0" Text="阅读模式：只读渲染（骨架）" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
+								<ScrollViewer Grid.Row="1">
 									<StackPanel Spacing="8">
-										<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
+										<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
 										<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
 									</StackPanel>
 								</ScrollViewer>
-							</Border>
-						</Grid>
-
-						<Grid Grid.Row="2" IsVisible="{Binding IsSplitVertical}" RowDefinitions="*,8,*">
-							<Border Grid.Row="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-								<TextBox AcceptsReturn="True"
-										 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-										 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
-										 Watermark="上方源码区（占位）" />
-							</Border>
-							<Border Grid.Row="1" Background="Transparent" Height="8" />
-							<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-								<ScrollViewer>
-									<StackPanel Spacing="8">
-										<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
-										<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
-									</StackPanel>
-								</ScrollViewer>
-							</Border>
-						</Grid>
-					</Grid>
-
-					<Border IsVisible="{Binding IsReadMode}"
-							Padding="16"
-							CornerRadius="12"
-							Background="#0FFFFFFF"
-							BorderBrush="#2FFFFFFF"
-							BorderThickness="1">
-						<Grid RowDefinitions="Auto, *">
-							<TextBlock Grid.Row="0" Text="阅读模式：只读渲染（骨架）" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
-							<ScrollViewer Grid.Row="1">
-								<StackPanel Spacing="8">
-									<TextBlock TextWrapping="Wrap" Text="{Binding PreviewPlaceholder}" />
-									<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
-								</StackPanel>
-							</ScrollViewer>
-						</Grid>
-					</Border>
+							</Grid>
+						</Border>
 					</Panel>
-					</StackPanel>
-				</Border>
+				</StackPanel>
+			</Border>
 		</Grid>
 	</DockPanel>
 </UserControl>
