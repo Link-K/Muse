@@ -23,7 +23,6 @@ public partial class FileTreeNodeViewModel : ObservableObject
 	public bool IsDirectory { get; }
 
 	public string IconGlyph => IsDirectory ? "\uE8B7" : "\uE8A4";
-	public string IconFontFamily => "Segoe MDL2 Assets";
 
 	[ObservableProperty]
 	private bool _isExpanded;
