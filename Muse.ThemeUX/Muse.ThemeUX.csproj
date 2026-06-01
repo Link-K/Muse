@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="ThemeResources.xaml" />
+    <AvaloniaResource Include="ThemeStyles.xaml" />
   </ItemGroup>
 </Project>

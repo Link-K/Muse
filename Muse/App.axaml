@@ -18,6 +18,7 @@
 	</Application.Resources>
 
 	<Application.Styles>
+		<StyleInclude Source="avares://Muse.ThemeUX/ThemeStyles.xaml" />
 		<FluentTheme />
 	</Application.Styles>
 </Application>

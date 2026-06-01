@@ -6,29 +6,43 @@ namespace Muse.Converters
 {
 	public class ExpandSymbolConverter : IValueConverter
 	{
+		private static string s_expanded = "▾";
+		private static string s_collapsed = "▸";
+		private static bool s_initialized = false;
+		private static readonly object s_initLock = new object();
+
 		public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
 		{
-			var expanded = "▾";
-			var collapsed = "▸";
-			try
+			// Lazy initialize glyphs once to avoid repeated resource lookups
+			if (!s_initialized)
 			{
-				var app = Avalonia.Application.Current;
-				if (app?.Resources != null)
+				lock (s_initLock)
 				{
-					if (app.Resources.TryGetResource("ExpandExpandedGlyph", null, out var e))
-						expanded = e as string ?? expanded;
-					if (app.Resources.TryGetResource("ExpandCollapsedGlyph", null, out var c))
-						collapsed = c as string ?? collapsed;
+					if (!s_initialized)
+					{
+						try
+						{
+							var app = Avalonia.Application.Current;
+							if (app?.Resources != null)
+							{
+								if (app.Resources.TryGetResource("ExpandExpandedGlyph", null, out var e))
+									s_expanded = e as string ?? s_expanded;
+								if (app.Resources.TryGetResource("ExpandCollapsedGlyph", null, out var c))
+									s_collapsed = c as string ?? s_collapsed;
+							}
+						}
+						catch
+						{
+							// best-effort only
+						}
+						s_initialized = true;
+					}
 				}
-			}
-			catch
-			{
-				// ignore and fallback to defaults
 			}
 
 			if (value is bool b)
-				return b ? expanded : collapsed;
-			return collapsed;
+				return b ? s_expanded : s_collapsed;
+			return s_collapsed;
 		}
 
 		public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

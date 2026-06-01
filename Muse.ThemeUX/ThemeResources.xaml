@@ -11,6 +11,7 @@
   <x:String x:Key="TabDirtyGlyph">●</x:String>
   <x:String x:Key="TabConflictGlyph">⚠</x:String>
   <x:String x:Key="TabCloseGlyph">✕</x:String>
+  <x:String x:Key="OpenGlyph">⤓</x:String>
   <x:String x:Key="ExpandCollapsedGlyph">▸</x:String>
   <x:String x:Key="ExpandExpandedGlyph">▾</x:String>
   <!-- Tree item backgrounds and states -->
@@ -26,5 +27,7 @@
   <!-- Tab icon brushes -->
   <SolidColorBrush x:Key="TabDirtyForeground" Color="#D13438" />
   <SolidColorBrush x:Key="TabConflictForeground" Color="#D13438" />
+
+  <!-- Shared control styles are provided separately in ThemeStyles.xaml -->
 
 </ResourceDictionary>

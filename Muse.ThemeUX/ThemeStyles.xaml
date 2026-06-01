@@ -1,0 +1,25 @@
+<Styles xmlns="https://github.com/avaloniaui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="ProgressBar.retry-progress">
+    <Setter Property="Height" Value="6" />
+    <Setter Property="Width" Value="80" />
+    <Setter Property="Margin" Value="6,0,0,0" />
+    <Setter Property="CornerRadius" Value="3" />
+  </Style>
+
+  <Style Selector="TextBlock.retry-text">
+    <Setter Property="Foreground" Value="#D13438" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Opacity" Value="0.95" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+
+  <Style Selector="StackPanel.file-row">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="StackPanel.file-row:pointerover">
+    <Setter Property="Background" Value="{DynamicResource TreeItemHoverBackground}" />
+  </Style>
+
+</Styles>
