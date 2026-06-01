@@ -42,6 +42,26 @@ namespace Muse.Tests
 				{
 					// ignore resource load failures in test environments
 				}
+
+				// Ensure Avalonia platform is initialized for controls that rely on platform services
+				try
+				{
+					// This will perform platform detection and minimal setup without starting an app loop.
+					Avalonia.AppBuilder.Configure<Muse.App>()
+						.UsePlatformDetect()
+						.SetupWithoutStarting();
+
+					// GridSplitter requires ICursorFactory, so we bind a dummy implementation if not already bound
+					if (AvaloniaLocator.Current.GetService<Avalonia.Platform.ICursorFactory>() == null)
+					{
+						AvaloniaLocator.CurrentMutable.Bind<Avalonia.Platform.ICursorFactory>().ToConstant(new TestCursorFactory());
+					}
+				}
+				catch
+				{
+					// best-effort only; if platform can't be initialized in the test environment,
+					// tests should continue to run with fallback behavior.
+				}
 			}
 			catch
 			{

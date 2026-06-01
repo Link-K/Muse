@@ -48,18 +48,37 @@
 		<DataTemplate x:Key="PreviewBlockTemplate" x:DataType="vm:PreviewBlockViewModel">
 			<StackPanel IsVisible="{Binding IsRenderable}" Spacing="6" Margin="0,0,0,10">
 				<Border IsVisible="{Binding IsHeading}" Background="#18FFFFFF" CornerRadius="8" Padding="10,8">
-					<TextBlock Text="{Binding Content}" FontSize="18" FontWeight="Bold" />
+					<Grid>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="Auto" />
+						</Grid.ColumnDefinitions>
+						<TextBlock Text="{Binding Content}" FontSize="18" FontWeight="Bold" />
+						<Button Grid.Column="1" Content="🔗" Command="{Binding CopyAnchorCommand}" Background="Transparent" BorderThickness="0" Padding="6" ToolTip.Tip="复制标题锚点" />
+					</Grid>
 				</Border>
 				<Border IsVisible="{Binding IsListItem}" Background="#0FFFFFFF" CornerRadius="8" Padding="10,8">
 					<TextBlock Text="{Binding Content, StringFormat=• {0}}" TextWrapping="Wrap" />
 				</Border>
-				<Border IsVisible="{Binding IsCodeFence}" Background="#111111" CornerRadius="8" Padding="10" BorderBrush="#2B2B2B" BorderThickness="1">
-					<ScrollViewer HorizontalScrollBarVisibility="Auto">
-						<TextBlock Text="{Binding Content}"
-								   FontFamily="Consolas"
-								   Foreground="#E6E6E6"
-								   TextWrapping="NoWrap" />
-					</ScrollViewer>
+				<Border IsVisible="{Binding IsCodeFence}" Background="#111111" CornerRadius="8" Padding="0" BorderBrush="#2B2B2B" BorderThickness="1">
+					<StackPanel>
+						<Border Background="#0D000000" Padding="8,6">
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="*" />
+									<ColumnDefinition Width="Auto" />
+								</Grid.ColumnDefinitions>
+								<TextBlock Text="{Binding CodeFenceLanguage}" Foreground="#CCCCCC" Opacity="0.9" />
+								<Button Grid.Column="1" Content="复制" Command="{Binding CopyCodeCommand}" Background="Transparent" BorderThickness="0" Padding="6" ToolTip.Tip="复制代码块" />
+							</Grid>
+						</Border>
+						<ScrollViewer HorizontalScrollBarVisibility="Auto" Padding="10">
+							<TextBlock Text="{Binding Content}"
+									   FontFamily="Consolas"
+									   Foreground="#E6E6E6"
+									   TextWrapping="NoWrap" />
+						</ScrollViewer>
+					</StackPanel>
 				</Border>
 				<Border IsVisible="{Binding IsTableRow}" Background="#0DFFFFFF" CornerRadius="8" Padding="10,8" BorderBrush="#22FFFFFF" BorderThickness="1">
 					<StackPanel Spacing="6">
@@ -68,7 +87,7 @@
 						<!-- Fallback plain text preview removed -->
 					</StackPanel>
 				</Border>
-				<TextBlock IsVisible="{Binding IsParagraph}" Text="{Binding Content}" TextWrapping="Wrap" Opacity="0.96" />
+				<TextBlock IsVisible="{Binding IsParagraph}" Text="{Binding Content}" TextWrapping="Wrap" Opacity="0.96" Margin="0,2" />
 			</StackPanel>
 		</DataTemplate>
 	</UserControl.Resources>
@@ -339,8 +358,13 @@
 					</ScrollViewer>
 				</Grid>
 			</Border>
-			<!-- 中间分隔 -->
-			<Border Grid.Column="1" Background="Transparent" Width="8" />
+			<!-- 中间分隔（可拖动） -->
+			<GridSplitter Grid.Column="1"
+						  Background="Transparent"
+						  Width="8"
+						  ShowsPreview="True"
+						  ResizeDirection="Columns"
+						  ResizeBehavior="PreviousAndNext" />
 			<!-- 现有主内容放到第2列 -->
 			<Border Grid.Column="2">
 				<StackPanel Spacing="8">
@@ -446,7 +470,12 @@
 											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
 											 Watermark="左侧源码区（占位）" />
 								</Border>
-								<Border Grid.Column="1" Background="Transparent" Width="8" />
+								<GridSplitter Grid.Column="1"
+											  Background="Transparent"
+											  Width="8"
+											  ShowsPreview="True"
+											  ResizeDirection="Columns"
+											  ResizeBehavior="PreviousAndNext" />
 								<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 									<ScrollViewer>
 										<StackPanel Spacing="8">
@@ -464,7 +493,12 @@
 											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
 											 Watermark="上方源码区（占位）" />
 								</Border>
-								<Border Grid.Row="1" Background="Transparent" Height="8" />
+								<GridSplitter Grid.Row="1"
+											  Background="Transparent"
+											  Height="8"
+											  ShowsPreview="True"
+											  ResizeDirection="Rows"
+											  ResizeBehavior="PreviousAndNext" />
 								<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 									<ScrollViewer>
 										<StackPanel Spacing="8">
