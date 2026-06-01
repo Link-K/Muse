@@ -1,7 +1,10 @@
 using Muse.Editor.Rendering;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
+using Muse.Services;
+using Muse;
 
 namespace Muse.ViewModels;
 
@@ -17,9 +20,16 @@ public sealed class PreviewBlockViewModel
 		TableDisplayText = Content;
 		TableRows = Array.Empty<PreviewTableRowViewModel>();
 
-		// Initialize commands as no-op placeholders; can be enhanced to interact with clipboard later.
-		CopyCodeCommand = new ActionCommand(() => { });
-		CopyAnchorCommand = new ActionCommand(() => { });
+		// Initialize commands to real implementations that use IClipboardService when available.
+		CopyCodeCommand = new ActionCommand(() =>
+		{
+			_ = CopyCodeAsync();
+		});
+
+		CopyAnchorCommand = new ActionCommand(() =>
+		{
+			_ = CopyAnchorAsync();
+		});
 	}
 
 	public RenderedBlockKind Kind { get; }
@@ -71,6 +81,60 @@ public sealed class PreviewBlockViewModel
 	public ICommand CopyCodeCommand { get; }
 
 	public ICommand CopyAnchorCommand { get; }
+
+	private IClipboardService ResolveClipboard()
+	{
+		try
+		{
+			// Prefer DI when available
+			return App.Resolve<IClipboardService>();
+		}
+		catch
+		{
+			// Fallback to runtime implementation
+			return new AvaloniaClipboardService();
+		}
+	}
+
+	private async Task CopyCodeAsync()
+	{
+		try
+		{
+			var svc = ResolveClipboard();
+			await svc.SetTextAsync(Content ?? string.Empty).ConfigureAwait(false);
+		}
+		catch
+		{
+			// best-effort: swallow exceptions to avoid breaking UI
+		}
+	}
+
+	private static string Slugify(string s)
+	{
+		if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+		var lowered = s.ToLowerInvariant();
+		var arr = lowered.Select(c => (char.IsLetterOrDigit(c) ? c : '-')).ToArray();
+		var joined = new string(arr);
+		// collapse multiple dashes
+		while (joined.Contains("--")) joined = joined.Replace("--", "-");
+		return joined.Trim('-');
+	}
+
+	private async Task CopyAnchorAsync()
+	{
+		try
+		{
+			if (!IsHeading) return;
+			var anchor = Slugify(Content ?? string.Empty);
+			if (string.IsNullOrWhiteSpace(anchor)) return;
+			var svc = ResolveClipboard();
+			await svc.SetTextAsync(anchor).ConfigureAwait(false);
+		}
+		catch
+		{
+			// swallow
+		}
+	}
 
 	public bool ShowTableGrid => IsTableRow && TableRows.Length > 0;
 

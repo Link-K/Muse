@@ -50,12 +50,6 @@ namespace Muse.Tests
 					Avalonia.AppBuilder.Configure<Muse.App>()
 						.UsePlatformDetect()
 						.SetupWithoutStarting();
-
-					// GridSplitter requires ICursorFactory, so we bind a dummy implementation if not already bound
-					if (AvaloniaLocator.Current.GetService<Avalonia.Platform.ICursorFactory>() == null)
-					{
-						AvaloniaLocator.CurrentMutable.Bind<Avalonia.Platform.ICursorFactory>().ToConstant(new TestCursorFactory());
-					}
 				}
 				catch
 				{

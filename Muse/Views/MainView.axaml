@@ -6,6 +6,7 @@
 			 xmlns:ws="using:Muse.Workspace"
 			 xmlns:conv="using:Muse.Converters"
 			 xmlns:controls="using:Avalonia.Controls"
+	            xmlns:localControls="using:Muse.Controls"
 			 mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
 			 x:Class="Muse.Views.MainView"
 			 x:Name="Root"
@@ -266,7 +267,7 @@
 			</StackPanel>
 		</Expander>
 
-		<Grid ColumnDefinitions="280,8,*">
+				 <Grid ColumnDefinitions="280,8,*">
 			<!-- 左侧工作区文件树 & 标签栏 -->
 			<Border Grid.Column="0" Padding="10" CornerRadius="8" Background="{StaticResource TreeBackground}" BorderBrush="#2FFFFFFF" BorderThickness="1">
 				<Grid RowDefinitions="Auto,*,Auto,Auto">
@@ -359,12 +360,11 @@
 				</Grid>
 			</Border>
 			<!-- 中间分隔（可拖动） -->
-			<GridSplitter Grid.Column="1"
-						  Background="Transparent"
-						  Width="8"
-						  ShowsPreview="True"
-						  ResizeDirection="Columns"
-						  ResizeBehavior="PreviousAndNext" />
+			<localControls:SafeGridSplitter Grid.Column="1"
+											Background="Transparent"
+											Width="8"
+											ResizeDirection="Columns"
+											ResizeBehavior="PreviousAndNext" />
 			<!-- 现有主内容放到第2列 -->
 			<Border Grid.Column="2">
 				<StackPanel Spacing="8">
@@ -470,12 +470,11 @@
 											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
 											 Watermark="左侧源码区（占位）" />
 								</Border>
-								<GridSplitter Grid.Column="1"
-											  Background="Transparent"
-											  Width="8"
-											  ShowsPreview="True"
-											  ResizeDirection="Columns"
-											  ResizeBehavior="PreviousAndNext" />
+								<localControls:SafeGridSplitter Grid.Column="1"
+																	Background="Transparent"
+																	Width="8"
+																	ResizeDirection="Columns"
+																	ResizeBehavior="PreviousAndNext" />
 								<Border Grid.Column="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 									<ScrollViewer>
 										<StackPanel Spacing="8">
@@ -493,12 +492,11 @@
 											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
 											 Watermark="上方源码区（占位）" />
 								</Border>
-								<GridSplitter Grid.Row="1"
-											  Background="Transparent"
-											  Height="8"
-											  ShowsPreview="True"
-											  ResizeDirection="Rows"
-											  ResizeBehavior="PreviousAndNext" />
+								<localControls:SafeGridSplitter Grid.Row="1"
+																	Background="Transparent"
+																	Height="8"
+																	ResizeDirection="Rows"
+																	ResizeBehavior="PreviousAndNext" />
 								<Border Grid.Row="2" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
 									<ScrollViewer>
 										<StackPanel Spacing="8">

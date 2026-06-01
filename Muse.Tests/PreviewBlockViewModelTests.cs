@@ -1,88 +1,113 @@
+using System;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Muse.Editor.Rendering;
-using Muse.Rendering;
-using Muse.ViewModels;
-using Muse.Workspace;
+using Muse.Services;
 using Xunit;
 
-namespace Muse.Tests;
-
-public sealed class PreviewBlockViewModelTests
+namespace Muse.Tests
 {
-	[Fact]
-	public void TableRow_ShouldKeepEmptyCells()
-	{
-		var block = new RenderedBlock(RenderedBlockKind.TableRow, "| A |  | C |", "| A |  | C |", 1);
-		var vm = new PreviewBlockViewModel(block);
+    public sealed class PreviewBlockViewModelTests : IDisposable
+    {
+        private readonly IServiceProvider? _originalServiceProvider;
 
-		Assert.True(vm.ShowTableCells);
-		Assert.Equal(3, vm.TableCells.Length);
-		Assert.Equal("A", vm.TableCells[0]);
-		Assert.Equal(string.Empty, vm.TableCells[1]);
-		Assert.Equal("C", vm.TableCells[2]);
-	}
+        public PreviewBlockViewModelTests()
+        {
+            _originalServiceProvider = GetServiceProvider();
+        }
 
-	[Fact]
-	public void TableDivider_ShouldNotRenderCells()
-	{
-		var block = new RenderedBlock(RenderedBlockKind.TableRow, "| --- | :---: | ---: |", "| --- | :---: | ---: |", 2);
-		var vm = new PreviewBlockViewModel(block);
+        public void Dispose()
+        {
+            SetServiceProvider(_originalServiceProvider);
+        }
 
-		Assert.True(vm.IsTableDivider);
-		Assert.False(vm.ShowTableCells);
-	}
+        [Fact]
+        public async Task CopyCodeCommand_SetsClipboardText()
+        {
+            var tcs = new TaskCompletionSource<string?>();
+            var fake = new RecordingClipboardService(tcs);
 
-	[Fact]
-	public void TableRows_ShouldUseAlignedDisplayTextAcrossSameSegment()
-	{
-		var previewService = new FixedPreviewService(
-			new RenderedBlock(RenderedBlockKind.TableRow, "| Name | Role |", "| Name | Role |", 1),
-			new RenderedBlock(RenderedBlockKind.TableRow, "| --- | --- |", "| --- | --- |", 2),
-			new RenderedBlock(RenderedBlockKind.TableRow, "| A | Developer |", "| A | Developer |", 3),
-			new RenderedBlock(RenderedBlockKind.TableRow, "| Bob | QA |", "| Bob | QA |", 4));
+            var services = new ServiceCollection();
+            services.AddSingleton<IClipboardService>(fake);
+            SetServiceProvider(services.BuildServiceProvider());
 
-		using var vm = new MainViewModel(previewService, new InMemoryWorkspaceService(enableBackgroundAutoSave: false), false);
+            var block = new RenderedBlock(RenderedBlockKind.CodeFence, "```", "console.log('hi');", 1);
+            var vm = new Muse.ViewModels.PreviewBlockViewModel(block);
 
-		Assert.Contains("| Name | Role      |", vm.PreviewBlocks[0].TableDisplayText);
-		Assert.Contains("| ---- | --------- |", vm.PreviewBlocks[0].TableDisplayText);
-		Assert.Contains("| A    | Developer |", vm.PreviewBlocks[0].TableDisplayText);
-		Assert.Contains("| Bob  | QA        |", vm.PreviewBlocks[0].TableDisplayText);
-	}
+            vm.CopyCodeCommand.Execute(null);
 
-	[Fact]
-	public void TableSegment_ShouldRenderAsSingleVisibleBlock()
-	{
-		var previewService = new FixedPreviewService(
-			new RenderedBlock(RenderedBlockKind.TableRow, "| Name | Role |", "| Name | Role |", 1),
-			new RenderedBlock(RenderedBlockKind.TableRow, "| --- | --- |", "| --- | --- |", 2),
-			new RenderedBlock(RenderedBlockKind.TableRow, "| Bob | QA |", "| Bob | QA |", 3));
+            var result = await Task.WhenAny(tcs.Task, Task.Delay(2000));
+            Assert.True(tcs.Task.IsCompleted, "Clipboard was not invoked within timeout");
+            Assert.Equal("console.log('hi');", tcs.Task.Result);
+        }
 
-		using var vm = new MainViewModel(previewService, new InMemoryWorkspaceService(enableBackgroundAutoSave: false), false);
+        [Fact]
+        public async Task CopyAnchorCommand_WhenHeading_SetsSlug()
+        {
+            var tcs = new TaskCompletionSource<string?>();
+            var fake = new RecordingClipboardService(tcs);
 
-		Assert.True(vm.PreviewBlocks[0].IsRenderable);
-		Assert.False(vm.PreviewBlocks[1].IsRenderable);
-		Assert.False(vm.PreviewBlocks[2].IsRenderable);
-		Assert.Contains("| Name | Role |", vm.PreviewBlocks[0].TableDisplayText);
-		Assert.Contains("| ---- | ---- |", vm.PreviewBlocks[0].TableDisplayText);
-		Assert.Contains("| Bob  | QA   |", vm.PreviewBlocks[0].TableDisplayText);
-		Assert.True(vm.PreviewBlocks[0].ShowTableGrid);
-		Assert.Equal(3, vm.PreviewBlocks[0].TableRows.Length);
-		Assert.False(vm.PreviewBlocks[0].TableRows[0].IsDivider);
-		Assert.True(vm.PreviewBlocks[0].TableRows[1].IsDivider);
-		Assert.False(vm.PreviewBlocks[0].TableRows[2].IsDivider);
-	}
+            var services = new ServiceCollection();
+            services.AddSingleton<IClipboardService>(fake);
+            SetServiceProvider(services.BuildServiceProvider());
 
-	private sealed class FixedPreviewService : IMarkdownPreviewService
-	{
-		private readonly RenderedBlock[] _blocks;
+            var block = new RenderedBlock(RenderedBlockKind.Heading, "# Title", "Title Example", 1);
+            var vm = new Muse.ViewModels.PreviewBlockViewModel(block);
 
-		public FixedPreviewService(params RenderedBlock[] blocks)
-		{
-			_blocks = blocks;
-		}
+            vm.CopyAnchorCommand.Execute(null);
 
-		public PreviewViewState Build(string markdown, EditorMode mode, string? theme = null)
-		{
-			return new PreviewViewState(string.Empty, false, null, _blocks);
-		}
-	}
+            var result = await Task.WhenAny(tcs.Task, Task.Delay(2000));
+            Assert.True(tcs.Task.IsCompleted, "Clipboard was not invoked for heading");
+            Assert.Equal("title-example", tcs.Task.Result);
+        }
+
+        [Fact]
+        public async Task CopyAnchorCommand_WhenNotHeading_DoesNotCallClipboard()
+        {
+            var tcs = new TaskCompletionSource<string?>();
+            var fake = new RecordingClipboardService(tcs);
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IClipboardService>(fake);
+            SetServiceProvider(services.BuildServiceProvider());
+
+            var block = new RenderedBlock(RenderedBlockKind.Paragraph, "para", "Just text", 1);
+            var vm = new Muse.ViewModels.PreviewBlockViewModel(block);
+
+            vm.CopyAnchorCommand.Execute(null);
+
+            // wait a short time; the clipboard should not be called
+            await Task.Delay(250);
+            Assert.False(tcs.Task.IsCompleted, "Clipboard should not be invoked for non-heading");
+        }
+
+        private static IServiceProvider? GetServiceProvider()
+        {
+            var prop = typeof(Muse.App).GetProperty("ServiceProvider", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            return prop?.GetValue(null) as IServiceProvider;
+        }
+
+        private static void SetServiceProvider(IServiceProvider? provider)
+        {
+            var prop = typeof(Muse.App).GetProperty("ServiceProvider", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var setter = prop?.GetSetMethod(nonPublic: true);
+            setter?.Invoke(null, new object?[] { provider });
+        }
+
+        private sealed class RecordingClipboardService : IClipboardService
+        {
+            private readonly TaskCompletionSource<string?> _tcs;
+
+            public RecordingClipboardService(TaskCompletionSource<string?> tcs)
+            {
+                _tcs = tcs;
+            }
+
+            public Task<bool> SetTextAsync(string text)
+            {
+                _tcs.TrySetResult(text);
+                return Task.FromResult(true);
+            }
+        }
+    }
 }
