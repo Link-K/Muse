@@ -90,6 +90,30 @@ public partial class MainView : UserControl
 		}
 	}
 
+	private void OnFileTreeNodeDoubleTapped(object? sender, TappedEventArgs e)
+	{
+		if (sender is not Control c) return;
+		if (c.DataContext is not FileTreeNodeViewModel node) return;
+		if (node.IsDirectory) return;
+
+		if (node.OpenCommand?.CanExecute(null) == true)
+		{
+			node.OpenCommand.Execute(null);
+		}
+	}
+
+	private void OnFileTreeNodeTapped(object? sender, TappedEventArgs e)
+	{
+		if (sender is not Control c) return;
+		if (c.DataContext is not FileTreeNodeViewModel node) return;
+		// Only toggle expansion for directories on single tap
+		if (!node.IsDirectory) return;
+		if (node.ToggleExpandedCommand?.CanExecute(null) == true)
+		{
+			node.ToggleExpandedCommand.Execute(null);
+		}
+	}
+
 	// DI constructor used in production when resolving via IServiceProvider
 	public MainView(MainViewModel viewModel, IClipboardService clipboardService, IFileDebugWriter fileDebugWriter)
 	{
@@ -97,6 +121,56 @@ public partial class MainView : UserControl
 		DataContext = viewModel;
 		ClipboardService = clipboardService;
 		FileDebugWriter = fileDebugWriter;
+
+		// 订阅 ViewModel 的不支持格式对话框请求事件，视图负责以模态窗口展示
+		if (viewModel is not null)
+		{
+			var top = TopLevel.GetTopLevel(this) as Window;
+			// Prefer container-resolved IDialogService when available; fall back to inline dialog.
+			Muse.Services.IDialogService? ds = App.ServiceProvider?.GetService(typeof(Muse.Services.IDialogService)) as Muse.Services.IDialogService;
+
+			viewModel.ShowUnsupportedFileDialogRequested += async (title, message) =>
+			{
+				try
+				{
+					if (ds is not null)
+					{
+						await ds.ShowMessageAsync(title, message ?? string.Empty);
+					}
+					else
+					{
+						// fallback: attempt inline dialog (minimal)
+						var dialog = new Window
+						{
+							Title = title,
+							Width = 480,
+							Height = 180,
+							CanResize = false,
+							WindowStartupLocation = WindowStartupLocation.CenterOwner
+						};
+						var panel = new StackPanel { Margin = new Thickness(12) };
+						var text = new TextBlock { Text = message ?? string.Empty };
+						var btn = new Button { Content = "确定", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Width = 80, Margin = new Thickness(0, 12, 0, 0) };
+						btn.Click += (_, _) => dialog.Close();
+						panel.Children.Add(text);
+						panel.Children.Add(btn);
+						dialog.Content = panel;
+						if (top is Window owner)
+						{
+							await dialog.ShowDialog(owner);
+						}
+						else
+						{
+							dialog.Show();
+						}
+					}
+				}
+				catch
+				{
+					// ignore display errors
+				}
+			};
+		}
 	}
 
 	/// <summary>
@@ -248,6 +322,74 @@ public partial class MainView : UserControl
 		catch
 		{
 			// ignore
+		}
+	}
+
+	public async void OnLoadWorkspaceClick(object? sender, RoutedEventArgs e)
+	{
+		if (DataContext is not MainViewModel vm)
+		{
+			return;
+		}
+
+		try
+		{
+			var topLevel = TopLevel.GetTopLevel(this);
+			if (topLevel?.StorageProvider is null)
+			{
+				vm.SaveFeedbackIsError = true;
+				vm.SaveFeedbackMessage = "当前平台不支持工作区选择器。";
+				return;
+			}
+
+			var options = new FolderPickerOpenOptions
+			{
+				Title = "选择工作区目录",
+				AllowMultiple = false
+			};
+
+			try
+			{
+				if (!string.IsNullOrWhiteSpace(vm.WorkspaceRootDisplay))
+				{
+					var candidate = vm.WorkspaceRootDisplay!;
+					if (!Path.IsPathRooted(candidate))
+					{
+						candidate = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, candidate));
+					}
+					if (Directory.Exists(candidate))
+					{
+						options.SuggestedStartLocation = await topLevel.StorageProvider.TryGetFolderFromPathAsync(candidate).ConfigureAwait(true);
+					}
+				}
+			}
+			catch
+			{
+				// ignore suggested start location failures
+			}
+
+			var selected = await topLevel.StorageProvider.OpenFolderPickerAsync(options).ConfigureAwait(true);
+			if (selected.Count == 0)
+			{
+				return;
+			}
+
+			var selectedPath = selected[0].TryGetLocalPath();
+			if (string.IsNullOrWhiteSpace(selectedPath))
+			{
+				vm.SaveFeedbackIsError = true;
+				vm.SaveFeedbackMessage = "所选目录无法转换为本地路径。";
+				return;
+			}
+
+			vm.OpenWorkspaceAt(selectedPath);
+			vm.SaveFeedbackIsError = false;
+			vm.SaveFeedbackMessage = $"已加载工作区：{selectedPath}";
+		}
+		catch (Exception ex)
+		{
+			vm.SaveFeedbackIsError = true;
+			vm.SaveFeedbackMessage = $"选择工作区失败：{ex.Message}";
 		}
 	}
 }

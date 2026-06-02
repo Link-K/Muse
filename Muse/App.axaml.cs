@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using Avalonia.Markup.Xaml;
 using Muse.ViewModels;
+using Avalonia.Controls;
 using Muse.Views;
 using Muse.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,6 +85,8 @@ public partial class App : Application
 		var services = new ServiceCollection();
 		services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
 		services.AddSingleton<IFileDebugWriter, FileDebugWriter>();
+		// DialogService requires a Window owner; provide a resolver that returns the application's main window when available.
+		services.AddSingleton<IDialogService>(_ => new DialogService(() => (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow as Window));
 		services.AddSingleton<MainViewModel>();
 		services.AddSingleton<MainView>();
 

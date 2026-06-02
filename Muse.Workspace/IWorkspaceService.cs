@@ -6,7 +6,7 @@ public interface IWorkspaceService
 
 	WorkspaceState OpenWorkspace(string rootPath);
 
-	WorkspaceTabState OpenDocument(string filePath);
+	OpenDocumentResult OpenDocument(string filePath);
 
 	bool CloseDocument(string documentId);
 

@@ -776,7 +776,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			return _state;
 		}
 
-		public WorkspaceTabState OpenDocument(string filePath)
+		public OpenDocumentResult OpenDocument(string filePath)
 		{
 			var tab = new WorkspaceTabState(filePath, filePath, false, DateTimeOffset.UtcNow);
 			_state = _state with
@@ -785,7 +785,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				ActiveDocumentId = tab.DocumentId
 			};
 			RaiseWorkspaceChanged();
-			return tab;
+			return OpenDocumentResult.Success(tab);
 		}
 
 		public bool CloseDocument(string documentId)

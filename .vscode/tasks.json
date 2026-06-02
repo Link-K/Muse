@@ -8,8 +8,7 @@
 			"args": [
 				"build",
 				"${workspaceFolder}/Muse.sln",
-				"/property:GenerateFullPaths=true",
-				"/consoleloggerparameters:NoSummary;ForceNoAlign"
+				"/property:GenerateFullPaths=true"
 			],
 			"problemMatcher": "$msCompile"
 		},
@@ -20,8 +19,7 @@
 			"args": [
 				"publish",
 				"${workspaceFolder}/Muse.sln",
-				"/property:GenerateFullPaths=true",
-				"/consoleloggerparameters:NoSummary;ForceNoAlign"
+				"/property:GenerateFullPaths=true"
 			],
 			"problemMatcher": "$msCompile"
 		},

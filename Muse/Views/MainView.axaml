@@ -91,6 +91,28 @@
 				<TextBlock IsVisible="{Binding IsParagraph}" Text="{Binding Content}" TextWrapping="Wrap" Opacity="0.96" Margin="0,2" />
 			</StackPanel>
 		</DataTemplate>
+
+		<DataTemplate x:Key="FileTreeNodeTemplate" x:DataType="vm:FileTreeNodeViewModel">
+			<StackPanel Classes="file-row" Spacing="2">
+				<StackPanel Orientation="Horizontal" Spacing="6" DoubleTapped="OnFileTreeNodeDoubleTapped" Tapped="OnFileTreeNodeTapped">
+					    <TextBlock Width="24" />
+					<TextBlock Text="{Binding IconGlyph}"
+							   FontFamily="{StaticResource IconFontFamily}"
+							   Foreground="{StaticResource IconForeground}"
+							   VerticalAlignment="Center"
+							   Margin="0,0,4,0"
+							   FontSize="{StaticResource IconSmallSize}" />
+					<TextBlock Text="{Binding Name}"
+							   Foreground="{StaticResource TreeForeground}"
+							   VerticalAlignment="Center" />
+					<!-- open button removed per UX request -->
+				</StackPanel>
+				<ItemsControl ItemsSource="{Binding Children}"
+							  Margin="20,2,0,0"
+							  IsVisible="{Binding IsExpanded}"
+							  ItemTemplate="{StaticResource FileTreeNodeTemplate}" />
+			</StackPanel>
+		</DataTemplate>
 	</UserControl.Resources>
 
 	<UserControl.Styles>
@@ -121,7 +143,7 @@
 					<Button Content="切换分屏方向"
 							Command="{Binding ToggleSplitOrientationCommand}"
 							IsEnabled="{Binding IsSplitMode}" />
-					<Button Content="加载工作区" Command="{Binding OpenCurrentWorkspaceCommand}" />
+					<Button Content="加载工作区" Click="OnLoadWorkspaceClick" />
 					<Button Content="保存文档"
 							Command="{Binding SaveActiveDocumentCommand}"
 							IsEnabled="{Binding CanSaveActiveDocument}" />
@@ -250,18 +272,29 @@
 						HorizontalAlignment="Left"
 						Padding="10,4" />
 				<Border IsVisible="{Binding ShowDebugTelemetryPanel}"
-						Padding="8"
+						Padding="10"
 						CornerRadius="8"
-						Background="#06FFFFFF"
+						Background="#141414"
 						BorderBrush="#22FFFFFF"
 						BorderThickness="1">
-					<StackPanel Spacing="6">
-						<TextBlock Text="调试诊断（仅 Debug）" FontSize="12" FontWeight="SemiBold" />
-						<TextBlock Text="{Binding DebugConflictLogFlushSummary}" FontSize="12" TextWrapping="Wrap" />
-						<Button Content="刷新统计"
-								Command="{Binding RefreshDebugTelemetryCommand}"
-								HorizontalAlignment="Left"
-								Padding="10,4" />
+					<StackPanel Spacing="8">
+						<StackPanel Orientation="Horizontal" Spacing="8">
+							<TextBlock Text="调试诊断（仅 Debug）" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+							<Button Content="刷新统计"
+									Command="{Binding RefreshDebugTelemetryCommand}"
+									Padding="10,4" />
+							<Button Content="关闭"
+									Command="{Binding ToggleDebugTelemetryExpandedCommand}"
+									Padding="10,4" />
+						</StackPanel>
+						<ScrollViewer MaxHeight="180"
+									  HorizontalScrollBarVisibility="Disabled"
+									  VerticalScrollBarVisibility="Auto">
+							<TextBlock Text="{Binding DebugConflictLogFlushSummary}"
+									   FontSize="12"
+									   Foreground="{StaticResource TreeForeground}"
+									   TextWrapping="Wrap" />
+						</ScrollViewer>
 					</StackPanel>
 				</Border>
 			</StackPanel>
@@ -273,90 +306,10 @@
 				<Grid RowDefinitions="Auto,*,Auto,Auto">
 					<TextBlock Grid.Row="0" Text="工作区文件" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8" />
 					<ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
-						<ItemsControl ItemsSource="{Binding FileTree}">
-							<ItemsControl.ItemTemplate>
-								<DataTemplate x:DataType="vm:FileTreeNodeViewModel">
-									<StackPanel Classes="file-row">
-										<StackPanel Orientation="Horizontal" Spacing="6">
-											<Button Content="{Binding IsExpanded, Converter={StaticResource ExpandSymbolConverter}}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding IsDirectory}" Padding="4" />
-											<TextBlock Text="{Binding IconGlyph}" FontFamily="{StaticResource IconFontFamily}" Foreground="{StaticResource IconForeground}" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="{StaticResource IconLargeSize}" />
-											<TextBlock Text="{Binding Name}" Foreground="{StaticResource TreeForeground}" />
-											<Button Command="{Binding OpenCommand}" Padding="6,2" Margin="6,0">
-												<TextBlock Text="{StaticResource OpenGlyph}"
-														   FontFamily="{StaticResource IconFontFamily}"
-														   FontSize="{StaticResource IconSmallSize}"
-														   Foreground="{StaticResource IconForeground}" />
-											</Button>
-										</StackPanel>
-										<ItemsControl ItemsSource="{Binding Children}" Margin="8,4,0,0" IsVisible="{Binding IsExpanded}">
-											<ItemsControl.ItemTemplate>
-												<DataTemplate x:DataType="vm:FileTreeNodeViewModel">
-													<StackPanel Orientation="Horizontal" Spacing="6" Classes="file-row">
-														<TextBlock Text="{Binding IconGlyph}" FontFamily="{StaticResource IconFontFamily}" Foreground="{StaticResource IconForeground}" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="{StaticResource IconSmallSize}" />
-														<TextBlock Text="{Binding Name}" Foreground="{StaticResource TreeForeground}" />
-														<StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-															<TextBlock Text="{Binding IsExpanded, Converter={StaticResource ExpandSymbolConverter}}" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding IsDirectory}" Margin="6,0" />
-															<Button Command="{Binding OpenCommand}" Padding="6,2" Margin="6,0">
-																<TextBlock Text="{StaticResource OpenGlyph}"
-																		   FontFamily="{StaticResource IconFontFamily}"
-																		   FontSize="{StaticResource IconSmallSize}"
-																		   Foreground="{StaticResource IconForeground}" />
-															</Button>
-														</StackPanel>
-													</StackPanel>
-												</DataTemplate>
-											</ItemsControl.ItemTemplate>
-										</ItemsControl>
-									</StackPanel>
-								</DataTemplate>
-							</ItemsControl.ItemTemplate>
-						</ItemsControl>
+						<ItemsControl ItemsSource="{Binding FileTree}"
+									  ItemTemplate="{StaticResource FileTreeNodeTemplate}" />
 					</ScrollViewer>
-					<TextBlock Grid.Row="2" Text="打开标签" FontSize="13" FontWeight="SemiBold" Margin="0,16,0,8" />
-					<ScrollViewer Grid.Row="3" MaxHeight="250" HorizontalScrollBarVisibility="Auto">
-						<ItemsControl ItemsSource="{Binding WorkspaceTabs}">
-								<ItemsControl.ItemTemplate>
-								<DataTemplate x:DataType="vm:WorkspaceTabViewModel">
-									<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
-										<Button Command="{Binding ActivateCommand}"
-											CommandParameter="{Binding DocumentId}"
-												Background="Transparent"
-												BorderThickness="0"
-												Padding="0"
-												Cursor="Hand">
-											<TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis" Width="120" Foreground="{StaticResource TreeForeground}" VerticalAlignment="Center" />
-										</Button>
-										<TextBlock Text="{StaticResource TabDirtyGlyph}"
-												   Foreground="{StaticResource TabDirtyForeground}"
-												   IsVisible="{Binding IsDirty}"
-												   FontFamily="{StaticResource IconFontFamily}"
-												   FontSize="10"
-												   VerticalAlignment="Center"
-												   ToolTip.Tip="未保存" />
-										<TextBlock Text="{StaticResource TabConflictGlyph}"
-												   Foreground="{StaticResource TabConflictForeground}"
-												   IsVisible="{Binding HasExternalConflict}"
-												   FontFamily="{StaticResource IconFontFamily}"
-												   FontSize="10"
-												   VerticalAlignment="Center"
-												   ToolTip.Tip="存在外部冲突" />
-										<Button Command="{Binding CloseCommand}"
-											CommandParameter="{Binding DocumentId}"
-												Background="Transparent"
-												BorderThickness="0"
-												Padding="4"
-												CornerRadius="4"
-												Cursor="Hand"
-												ToolTip.Tip="关闭标签">
-											<TextBlock Text="{StaticResource TabCloseGlyph}"
-													   FontFamily="{StaticResource IconFontFamily}"
-													   FontSize="10" />
-										</Button>
-									</StackPanel>
-								</DataTemplate>
-							</ItemsControl.ItemTemplate>
-						</ItemsControl>
-					</ScrollViewer>
+					<!-- 左侧打开标签区域已移除，使用上方顶部标签栏管理打开标签 -->
 				</Grid>
 			</Border>
 			<!-- 中间分隔（可拖动） -->
@@ -389,12 +342,12 @@
 									<Setter Property="Background" Value="#2AFFFFFF" />
 								</Style>
 							</ItemsControl.Styles>
-								<ItemsControl.ItemTemplate>
+							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="vm:WorkspaceTabViewModel">
-								<Border Classes="tab" Classes.active="{Binding IsActive}" CornerRadius="6,6,0,0" Margin="0,0,4,0" Padding="8,4" BorderThickness="1,1,1,0"
-										PointerPressed="OnTabPointerPressed"
-										PointerMoved="OnTabPointerMoved"
-										PointerReleased="OnTabPointerReleased">
+									<Border Classes="tab" Classes.active="{Binding IsActive}" CornerRadius="6,6,0,0" Margin="0,0,4,0" Padding="8,4" BorderThickness="1,1,1,0"
+											PointerPressed="OnTabPointerPressed"
+											PointerMoved="OnTabPointerMoved"
+											PointerReleased="OnTabPointerReleased">
 										<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 											<TextBlock Text="{StaticResource TabDirtyGlyph}"
 													   Foreground="{StaticResource TabDirtyForeground}"
@@ -410,16 +363,16 @@
 													   FontSize="10"
 													   VerticalAlignment="Center"
 													   ToolTip.Tip="存在外部冲突" />
-											    <Button Command="{Binding ActivateCommand}"
-												    CommandParameter="{Binding DocumentId}"
+											<Button Command="{Binding ActivateCommand}"
+													CommandParameter="{Binding DocumentId}"
 													Background="Transparent"
 													BorderThickness="0"
 													Padding="0"
 													Cursor="Hand">
 												<TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis" MaxWidth="140" Foreground="{StaticResource TreeForeground}" VerticalAlignment="Center" />
 											</Button>
-											    <Button Command="{Binding CloseCommand}"
-												    CommandParameter="{Binding DocumentId}"
+											<Button Command="{Binding CloseCommand}"
+													CommandParameter="{Binding DocumentId}"
 													Background="Transparent"
 													BorderThickness="0"
 													Padding="4"

@@ -15,6 +15,7 @@ namespace Muse.ViewModels;
 
 public partial class MainViewModel : ViewModelBase, IDisposable
 {
+	private readonly Muse.Services.IDialogService? _dialogService;
 	private readonly IMarkdownPreviewService _previewService;
 	private readonly IWorkspaceService _workspaceService;
 	private readonly bool _enableConflictLogPreferencePersistence;
@@ -55,10 +56,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	{
 	}
 
-	internal MainViewModel(IMarkdownPreviewService previewService, IWorkspaceService workspaceService, bool enableConflictLogPreferencePersistence)
+	internal MainViewModel(IMarkdownPreviewService previewService, IWorkspaceService workspaceService, bool enableConflictLogPreferencePersistence, Muse.Services.IDialogService? dialogService = null)
 	{
 		_previewService = previewService;
 		_workspaceService = workspaceService;
+		_dialogService = dialogService;
 		_enableConflictLogPreferencePersistence = enableConflictLogPreferencePersistence;
 		_conflictLogPreferenceSaveTimer = new Timer(_ => FlushConflictLogPreferencesSave(false), null, Timeout.Infinite, Timeout.Infinite);
 		_workspaceService.WorkspaceChanged += HandleWorkspaceChanged;
@@ -358,6 +360,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		LoadWorkspace(Environment.CurrentDirectory);
 	}
 
+	// Public helper for Views to request loading a workspace path (keeps LoadWorkspace private for tests).
+	public void OpenWorkspaceAt(string path)
+	{
+		LoadWorkspace(path);
+	}
+
 	[RelayCommand]
 	private void OpenFileNode(FileTreeNode node)
 	{
@@ -366,18 +374,90 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			return;
 		}
 
-		_workspaceService.OpenDocument(node.Path);
+		// 先进行轻量文件格式检查，避免加载不支持的二进制/未知格式导致界面卡死
+		if (!IsFileSupported(node.Path, out var reason))
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = reason ?? "不支持的文件格式。";
+			// 请求视图层显示模态提示框（视图可订阅此事件）
+			_ = (_dialogService?.ShowMessageAsync("无法打开文件", SaveFeedbackMessage) ?? ShowUnsupportedFileDialogRequested?.Invoke("无法打开文件", SaveFeedbackMessage) ?? System.Threading.Tasks.Task.CompletedTask);
+			return;
+		}
+
+		var openResult = _workspaceService.OpenDocument(node.Path);
+		if (!openResult.Succeeded)
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = openResult.Message ?? "无法打开文件。";
+			_ = (_dialogService?.ShowMessageAsync("无法打开文件", SaveFeedbackMessage) ?? ShowUnsupportedFileDialogRequested?.Invoke("无法打开文件", SaveFeedbackMessage) ?? System.Threading.Tasks.Task.CompletedTask);
+			return;
+		}
+
 		SyncWorkspaceState();
-		LoadActiveDocumentContent();
+		_ = LoadActiveDocumentContentAsync();
+	}
+
+	/// <summary>
+	/// 当需要在视图中显示不支持格式的模态对话框时触发。
+	/// 参数：标题，消息文本。
+	/// </summary>
+	public event Func<string, string, System.Threading.Tasks.Task>? ShowUnsupportedFileDialogRequested;
+
+	private static readonly string[] _wellKnownTextExtensions = new[] { ".md", ".markdown", ".txt", ".json", ".csv", ".yml", ".yaml" };
+
+	private static bool IsFileSupported(string path, out string? reason)
+	{
+		reason = null;
+		if (string.IsNullOrWhiteSpace(path))
+		{
+			reason = "无效的文件路径。";
+			return false;
+		}
+
+		var ext = Path.GetExtension(path)?.ToLowerInvariant();
+		if (!string.IsNullOrWhiteSpace(ext) && _wellKnownTextExtensions.Contains(ext))
+		{
+			return true;
+		}
+
+		// 如果扩展名未知，做一次轻量探测：读取文件前几 KB，若包含 NUL 字节则视为二进制（不支持）
+		try
+		{
+			using var fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+			var buffer = new byte[4096];
+			var read = fs.Read(buffer, 0, buffer.Length);
+			for (int i = 0; i < read; i++)
+			{
+				if (buffer[i] == 0)
+				{
+					reason = "不支持的二进制文件格式。";
+					return false;
+				}
+			}
+			// otherwise treat as supported text-like
+			return true;
+		}
+		catch (Exception ex)
+		{
+			reason = $"打开文件失败：{ex.Message}";
+			return false;
+		}
 	}
 
 	[RelayCommand]
 	private void ActivateTab(string documentId)
 	{
+		// Fire-and-forget to keep UI responsive; real work happens in ActivateTabInternal
+		if (string.IsNullOrWhiteSpace(documentId)) return;
+		_ = ActivateTabInternal(documentId);
+	}
+
+	private async System.Threading.Tasks.Task ActivateTabInternal(string documentId)
+	{
 		if (string.IsNullOrWhiteSpace(documentId)) return;
 		_workspaceService.ActivateDocument(documentId);
 		SyncWorkspaceState();
-		LoadActiveDocumentContent();
+		await LoadActiveDocumentContentAsync().ConfigureAwait(false);
 	}
 
 	[RelayCommand]
@@ -387,7 +467,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		if (_workspaceService.CloseDocument(documentId))
 		{
 			SyncWorkspaceState();
-			LoadActiveDocumentContent();
+			_ = LoadActiveDocumentContentAsync();
 		}
 	}
 
@@ -921,12 +1001,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			return;
 		}
 
-		_workspaceService.OpenDocument(sprintTaskPath);
+		var sprintResult = _workspaceService.OpenDocument(sprintTaskPath);
+		if (!sprintResult.Succeeded)
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = sprintResult.Message ?? "无法打开任务文件。";
+			_ = (_dialogService?.ShowMessageAsync("无法打开文件", SaveFeedbackMessage) ?? ShowUnsupportedFileDialogRequested?.Invoke("无法打开文件", SaveFeedbackMessage) ?? System.Threading.Tasks.Task.CompletedTask);
+			return;
+		}
+
 		SyncWorkspaceState();
-		LoadActiveDocumentContent();
+		_ = LoadActiveDocumentContentAsync();
 	}
 
-	private void LoadActiveDocumentContent()
+	private async System.Threading.Tasks.Task LoadActiveDocumentContentAsync()
 	{
 		var state = _workspaceService.GetState();
 		var activeTab = state.OpenTabs.FirstOrDefault(tab => tab.DocumentId == state.ActiveDocumentId);
@@ -941,6 +1029,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 			try
 			{
 				_isHydratingDraft = true;
+				// assign on current context
 				MarkdownDraft = draftContent;
 			}
 			finally
@@ -959,7 +1048,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		try
 		{
 			_isHydratingDraft = true;
-			MarkdownDraft = File.ReadAllText(filePath);
+			// Use asynchronous IO to avoid blocking UI thread when switching tabs
+			var content = await System.IO.File.ReadAllTextAsync(filePath).ConfigureAwait(false);
+			// marshal back to original context by setting property (await will capture context by default)
+			MarkdownDraft = content;
 		}
 		catch (Exception ex)
 		{
@@ -1170,13 +1262,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		ActiveDocumentHasExternalConflict = activeTab?.HasExternalConflict ?? false;
 		ActiveDocumentConflictMessage = activeTab?.ConflictMessage;
 
+		// Preserve expanded state from previous view models so tree doesn't auto-collapse on refresh
+		var previouslyExpanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		if (FileTree != null)
+		{
+			foreach (var ft in FileTree)
+			{
+				CollectExpandedPaths(ft, previouslyExpanded);
+			}
+		}
+
 		// Expose file tree and open tabs for UI
-		FileTree = (state.FileTree is null) ? Array.Empty<FileTreeNodeViewModel>() : CreateTreeViewModels(state.FileTree);
+		FileTree = (state.FileTree is null) ? Array.Empty<FileTreeNodeViewModel>() : CreateTreeViewModels(state.FileTree, previouslyExpanded);
 		// Create WorkspaceTabViewModel instances and wire per-tab Activate/Close commands to avoid DataTemplate ElementName bindings
 		WorkspaceTabs = state.OpenTabs.Select(t =>
 		{
 			var docId = t.DocumentId;
-			var activate = new ActionCommand(() => ActivateTab(docId));
+			var activate = new ActionCommand(() => _ = ActivateTabInternal(docId));
 			var close = new ActionCommand(() => CloseTab(docId));
 			return new WorkspaceTabViewModel(t, t.DocumentId == state.ActiveDocumentId, activate, close);
 		}).ToArray();
@@ -1187,18 +1289,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		OnPropertyChanged(nameof(WorkspaceSummary));
 	}
 
-	private FileTreeNodeViewModel[] CreateTreeViewModels(IReadOnlyList<Muse.Workspace.FileTreeNode> nodes)
+	private FileTreeNodeViewModel[] CreateTreeViewModels(IReadOnlyList<Muse.Workspace.FileTreeNode> nodes, HashSet<string>? expandedPaths = null)
 	{
 		var list = new List<FileTreeNodeViewModel>(nodes.Count);
 		foreach (var n in nodes)
 		{
 			var vm = new FileTreeNodeViewModel(n.Path, n.Name, n.IsDirectory, OpenFileNodeFromViewModel);
+			// restore expanded state if previously recorded
+			if (expandedPaths != null && expandedPaths.Contains(n.Path))
+			{
+				vm.IsExpanded = true;
+			}
 			if (n.Children != null && n.Children.Count > 0)
 			{
 				// recursively add children
 				foreach (var c in n.Children)
 				{
-					var childVms = CreateTreeViewModels(new[] { c });
+					var childVms = CreateTreeViewModels(new[] { c }, expandedPaths);
 					foreach (var cv in childVms)
 					{
 						vm.Children.Add(cv);
@@ -1210,12 +1317,32 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		return list.ToArray();
 	}
 
+	private void CollectExpandedPaths(FileTreeNodeViewModel vm, HashSet<string> dest)
+	{
+		if (vm.IsDirectory && vm.IsExpanded)
+		{
+			dest.Add(vm.Path);
+		}
+		foreach (var c in vm.Children)
+		{
+			CollectExpandedPaths(c, dest);
+		}
+	}
+
 	private void OpenFileNodeFromViewModel(FileTreeNodeViewModel vm)
 	{
 		if (vm == null || vm.IsDirectory) return;
-		_workspaceService.OpenDocument(vm.Path);
+		var openResult = _workspaceService.OpenDocument(vm.Path);
+		if (!openResult.Succeeded)
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = openResult.Message ?? "无法打开文件。";
+			_ = (_dialogService?.ShowMessageAsync("无法打开文件", SaveFeedbackMessage) ?? ShowUnsupportedFileDialogRequested?.Invoke("无法打开文件", SaveFeedbackMessage) ?? System.Threading.Tasks.Task.CompletedTask);
+			return;
+		}
+
 		SyncWorkspaceState();
-		LoadActiveDocumentContent();
+		_ = LoadActiveDocumentContentAsync();
 	}
 
 

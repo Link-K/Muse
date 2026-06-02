@@ -99,13 +99,20 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		return _state;
 	}
 
-	public WorkspaceTabState OpenDocument(string filePath)
+	public OpenDocumentResult OpenDocument(string filePath)
 	{
 		var normalizedPath = NormalizePath(filePath);
+
+		// 后备保护：在服务层进行轻量文件格式检查，避免外部调用直接加载不支持的文件导致 UI 卡死
+		if (!IsFileSupported(normalizedPath, out var reason))
+		{
+			return OpenDocumentResult.Failure(reason);
+		}
 		var existing = _state.OpenTabs.FirstOrDefault(tab => tab.FilePath == normalizedPath);
 		if (existing is not null)
 		{
-			return ActivateDocument(existing.DocumentId) ?? existing;
+			var activated = ActivateDocument(existing.DocumentId) ?? existing;
+			return OpenDocumentResult.Success(activated);
 		}
 
 		var tab = new WorkspaceTabState(
@@ -122,7 +129,7 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		};
 		RaiseWorkspaceChanged();
 
-		return tab;
+		return OpenDocumentResult.Success(tab);
 	}
 
 	public WorkspaceTabState? ActivateDocument(string documentId)
@@ -737,4 +744,44 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 			_conflictEvents.RemoveRange(0, _conflictEvents.Count - 100);
 		}
 	}
+
+	private static readonly string[] _wellKnownTextExtensions = new[] { ".md", ".markdown", ".txt", ".json", ".csv", ".yml", ".yaml" };
+
+	private static bool IsFileSupported(string path, out string? reason)
+	{
+		reason = null;
+		if (string.IsNullOrWhiteSpace(path))
+		{
+			reason = "无效的文件路径。";
+			return false;
+		}
+
+		var ext = Path.GetExtension(path)?.ToLowerInvariant();
+		if (!string.IsNullOrWhiteSpace(ext) && _wellKnownTextExtensions.Contains(ext))
+		{
+			return true;
+		}
+
+		try
+		{
+			using var fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+			var buffer = new byte[4096];
+			var read = fs.Read(buffer, 0, buffer.Length);
+			for (int i = 0; i < read; i++)
+			{
+				if (buffer[i] == 0)
+				{
+					reason = "不支持的二进制文件格式。";
+					return false;
+				}
+			}
+			return true;
+		}
+		catch
+		{
+			reason = "无法读取文件以确定格式。";
+			return false;
+		}
+	}
+
 }
