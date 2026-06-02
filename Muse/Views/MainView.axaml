@@ -19,6 +19,10 @@
 
 	<UserControl.Resources>
 		<conv:InverseBooleanConverter x:Key="InverseBoolConverter" />
+		<conv:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
+		<Transitions x:Key="DropIndicatorFadeTransitions">
+			<DoubleTransition Property="{x:Static Visual.OpacityProperty}" Duration="0:0:0.18" />
+		</Transitions>
 		<conv:ExpandSymbolConverter x:Key="ExpandSymbolConverter" />
 		<!-- Local converters only; brushes are provided by ThemeResources -->
 
@@ -344,44 +348,58 @@
 							</ItemsControl.Styles>
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="vm:WorkspaceTabViewModel">
-									<Border Classes="tab" Classes.active="{Binding IsActive}" CornerRadius="6,6,0,0" Margin="0,0,4,0" Padding="8,4" BorderThickness="1,1,1,0"
-											PointerPressed="OnTabPointerPressed"
-											PointerMoved="OnTabPointerMoved"
-											PointerReleased="OnTabPointerReleased">
-										<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-											<TextBlock Text="{StaticResource TabDirtyGlyph}"
-													   Foreground="{StaticResource TabDirtyForeground}"
-													   IsVisible="{Binding IsDirty}"
-													   FontFamily="{StaticResource IconFontFamily}"
-													   FontSize="10"
-													   VerticalAlignment="Center"
-													   ToolTip.Tip="未保存" />
-											<TextBlock Text="{StaticResource TabConflictGlyph}"
-													   Foreground="{StaticResource TabConflictForeground}"
-													   IsVisible="{Binding HasExternalConflict}"
-													   FontFamily="{StaticResource IconFontFamily}"
-													   FontSize="10"
-													   VerticalAlignment="Center"
-													   ToolTip.Tip="存在外部冲突" />
-											<Button Command="{Binding ActivateCommand}"
-													CommandParameter="{Binding DocumentId}"
-													Background="Transparent"
-													BorderThickness="0"
-													Padding="0"
-													Cursor="Hand">
-												<TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis" MaxWidth="140" Foreground="{StaticResource TreeForeground}" VerticalAlignment="Center" />
-											</Button>
-											<Button Command="{Binding CloseCommand}"
-													CommandParameter="{Binding DocumentId}"
-													Background="Transparent"
-													BorderThickness="0"
-													Padding="4"
-													CornerRadius="4"
-													Cursor="Hand"
-													ToolTip.Tip="关闭标签">
-												<TextBlock Text="{StaticResource TabCloseGlyph}" FontFamily="{StaticResource IconFontFamily}" FontSize="10" />
-											</Button>
-										</StackPanel>
+									<Border Classes="tab" Classes.active="{Binding IsActive}" CornerRadius="6,6,0,0" Margin="0,0,4,0" Padding="0" BorderThickness="1,1,1,0">
+										<Grid PointerPressed="OnTabPointerPressed"
+											  PointerMoved="OnTabPointerMoved"
+											  PointerReleased="OnTabPointerReleased">
+											<Grid.ColumnDefinitions>
+												<ColumnDefinition Width="6" />
+												<ColumnDefinition Width="*" />
+												<ColumnDefinition Width="6" />
+											</Grid.ColumnDefinitions>
+
+											<!-- Left insertion indicator (animated opacity) -->
+											<Border Grid.Column="0" Background="#66FFFFFF" Width="4" HorizontalAlignment="Left" Opacity="{Binding IsDropBefore, Converter={StaticResource BoolToOpacityConverter}}" CornerRadius="2" Margin="0,6" IsHitTestVisible="False" Transitions="{StaticResource DropIndicatorFadeTransitions}" />
+
+											<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,4">
+												<TextBlock Text="{StaticResource TabDirtyGlyph}"
+														   Foreground="{StaticResource TabDirtyForeground}"
+														   IsVisible="{Binding IsDirty}"
+														   FontFamily="{StaticResource IconFontFamily}"
+														   FontSize="10"
+														   VerticalAlignment="Center"
+														   ToolTip.Tip="未保存" />
+												<TextBlock Text="{StaticResource TabConflictGlyph}"
+														   Foreground="{StaticResource TabConflictForeground}"
+														   IsVisible="{Binding HasExternalConflict}"
+														   FontFamily="{StaticResource IconFontFamily}"
+														   FontSize="10"
+														   VerticalAlignment="Center"
+														   ToolTip.Tip="存在外部冲突" />
+												<Button Command="{Binding ActivateCommand}"
+														CommandParameter="{Binding DocumentId}"
+														Background="Transparent"
+														BorderThickness="0"
+														Padding="0"
+														Cursor="Hand">
+													<TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis" MaxWidth="140" Foreground="{StaticResource TreeForeground}" VerticalAlignment="Center" />
+												</Button>
+												<Button Command="{Binding CloseCommand}"
+														CommandParameter="{Binding DocumentId}"
+														Background="Transparent"
+														BorderThickness="0"
+														Padding="4"
+														CornerRadius="4"
+														Cursor="Hand"
+														ToolTip.Tip="关闭标签">
+													<TextBlock Text="{StaticResource TabCloseGlyph}" FontFamily="{StaticResource IconFontFamily}" FontSize="10" />
+												</Button>
+
+											</StackPanel>
+
+											<!-- Right insertion indicator (animated opacity) -->
+											<Border Grid.Column="2" Background="#66FFFFFF" Width="4" HorizontalAlignment="Right" Opacity="{Binding IsDropAfter, Converter={StaticResource BoolToOpacityConverter}}" CornerRadius="2" Margin="0,6" IsHitTestVisible="False" Transitions="{StaticResource DropIndicatorFadeTransitions}" />
+										</Grid>
 									</Border>
 								</DataTemplate>
 							</ItemsControl.ItemTemplate>

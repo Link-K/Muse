@@ -41,6 +41,9 @@ public partial class MainView : UserControl
 	private bool _isDragging;
 	private const double DragThreshold = 6.0; // pixels
 
+	// track current drop target to update visual indicator
+	private string? _currentDropTargetDocumentId;
+
 	private void OnTabPointerPressed(object? sender, PointerPressedEventArgs e)
 	{
 		if (sender is not Control c) return;
@@ -59,6 +62,31 @@ public partial class MainView : UserControl
 		if (!_isDragging && Math.Sqrt(dx * dx + dy * dy) > DragThreshold)
 		{
 			_isDragging = true;
+		}
+
+		// if dragging, update drop target visual on the tab currently under pointer (sender bound per-tab)
+		if (!_isDragging) return;
+		try
+		{
+			if (sender is not Control c) return;
+			if (c.DataContext is not Muse.ViewModels.WorkspaceTabViewModel targetVm) return;
+			// compute pointer position relative to target control to decide before/after
+			var local = e.GetPosition(c);
+			var width = c.Bounds.Width;
+			var isBefore = local.X < width / 2.0;
+			// clear previous and set new flags
+			if (!string.Equals(_currentDropTargetDocumentId, targetVm.DocumentId, StringComparison.Ordinal))
+			{
+				ClearCurrentDropTarget();
+				_currentDropTargetDocumentId = targetVm.DocumentId;
+			}
+			targetVm.IsDropTarget = true;
+			targetVm.IsDropBefore = isBefore;
+			targetVm.IsDropAfter = !isBefore;
+		}
+		catch
+		{
+			// ignore visual update errors
 		}
 	}
 
@@ -87,6 +115,35 @@ public partial class MainView : UserControl
 			_dragStartPoint = null;
 			_draggingDocumentId = null;
 			_isDragging = false;
+			ClearCurrentDropTarget();
+		}
+	}
+
+	private void ClearCurrentDropTarget()
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(_currentDropTargetDocumentId)) return;
+			if (DataContext is not Muse.ViewModels.MainViewModel vm) return;
+			var tabs = vm.WorkspaceTabs;
+			foreach (var t in tabs)
+			{
+				if (string.Equals(t.DocumentId, _currentDropTargetDocumentId, StringComparison.Ordinal))
+				{
+					t.IsDropTarget = false;
+					t.IsDropBefore = false;
+					t.IsDropAfter = false;
+					break;
+				}
+			}
+		}
+		catch
+		{
+			// ignore
+		}
+		finally
+		{
+			_currentDropTargetDocumentId = null;
 		}
 	}
 

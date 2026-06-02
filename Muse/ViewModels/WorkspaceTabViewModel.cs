@@ -19,6 +19,15 @@ public sealed partial class WorkspaceTabViewModel : ObservableObject
 	[ObservableProperty]
 	private bool _isActive;
 
+	[ObservableProperty]
+	private bool _isDropTarget;
+
+	[ObservableProperty]
+	private bool _isDropBefore;
+
+	[ObservableProperty]
+	private bool _isDropAfter;
+
 	public WorkspaceTabViewModel(WorkspaceTabState state, bool isActive)
 	{
 		DocumentId = state.DocumentId;

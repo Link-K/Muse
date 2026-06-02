@@ -7,3 +7,6 @@
 - 2026-06-02: 已移除 `MainView.axaml` 中文件树的展开按钮与文件的打开按钮，并移除左侧“打开标签”区域以精简交互（更依赖顶部标签栏）。
 - 2026-06-02: 新增单元测试 `FileTree_ExpandedState_ShouldBePreservedAcrossWorkspaceRefresh`，验证 `MainViewModel` 在 Workspace 刷新时保持文件树展开状态。
 - 2026-06-02: 已在本地运行 `dotnet build` 与 `dotnet test`，所有测试通过（64/64）。
+- 2026-06-02: 已为标签拖拽新增左右插入指示器与平滑淡入淡出动画（`BoolToOpacityConverter` + `DoubleTransition`）。
+- 2026-06-02: 修复双击打开文件时触发的 `MainView.axaml` DataTemplate 运行时空引用，做法为：将过渡定义移至资源并显式使用 `Visual.OpacityProperty`。
+- 2026-06-02: 最新本地验证通过：`dotnet build` 成功，`dotnet test` 全绿（65/65）。
