@@ -419,6 +419,42 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	}
 
 	[Fact]
+	public void FileTree_ExpandedState_ShouldBePreservedAcrossWorkspaceRefresh()
+	{
+		var preview = new FakePreviewService();
+		// initial state: two top-level directories
+		var initialTree = new[]
+		{
+			new Muse.Workspace.FileTreeNode("/repo/dir-a", "dir-a", true, new[] { new Muse.Workspace.FileTreeNode("/repo/dir-a/file1.md", "file1.md", false, System.Array.Empty<Muse.Workspace.FileTreeNode>()) }),
+			new Muse.Workspace.FileTreeNode("/repo/dir-b", "dir-b", true, System.Array.Empty<Muse.Workspace.FileTreeNode>())
+		};
+
+		// updated state after refresh contains the same top-level paths (simulating reload)
+		var refreshedTree = new[]
+		{
+			new Muse.Workspace.FileTreeNode("/repo/dir-a", "dir-a", true, new[] { new Muse.Workspace.FileTreeNode("/repo/dir-a/file1.md", "file1.md", false, System.Array.Empty<Muse.Workspace.FileTreeNode>()) }),
+			new Muse.Workspace.FileTreeNode("/repo/dir-b", "dir-b", true, System.Array.Empty<Muse.Workspace.FileTreeNode>())
+		};
+
+		var state1 = new WorkspaceState("/repo", initialTree, System.Array.Empty<WorkspaceTabState>(), null);
+		var state2 = new WorkspaceState("/repo", refreshedTree, System.Array.Empty<WorkspaceTabState>(), null);
+		var workspace = new FakeWorkspaceService(state1, state2);
+		var viewModel = new MainViewModel(preview, workspace);
+
+		// expand the first directory in the current view
+		Assert.NotEmpty(viewModel.FileTree);
+		viewModel.FileTree[0].IsExpanded = true;
+		Assert.True(viewModel.FileTree[0].IsExpanded);
+
+		// trigger workspace refresh by opening next queued workspace state
+		workspace.OpenWorkspace("/repo");
+
+		// after refresh, the new FileTree should preserve the expanded path
+		Assert.NotEmpty(viewModel.FileTree);
+		Assert.True(viewModel.FileTree[0].IsExpanded);
+	}
+
+	[Fact]
 	public void ConflictLogPreferences_WithRapidChanges_ShouldPersistFinalStateAfterDebounce()
 	{
 		var preview = new FakePreviewService();
