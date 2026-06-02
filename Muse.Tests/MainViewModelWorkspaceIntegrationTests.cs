@@ -32,6 +32,48 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	}
 
 	[Fact]
+	public void ReorderTabs_ShouldUpdateWorkspaceTabs()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", false, DateTimeOffset.UtcNow), new WorkspaceTabState("doc-2", "D:/repo/files/b.md", false, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		var viewModel = new MainViewModel(preview, workspace);
+
+		// initial order doc-1, doc-2
+		Assert.Equal("doc-1", viewModel.WorkspaceTabs[0].DocumentId);
+		Assert.Equal("doc-2", viewModel.WorkspaceTabs[1].DocumentId);
+
+		// move doc-2 to index 0
+		viewModel.ReorderTabs("doc-2", 0);
+
+		Assert.Equal("doc-2", viewModel.WorkspaceTabs[0].DocumentId);
+		Assert.Equal("doc-1", viewModel.WorkspaceTabs[1].DocumentId);
+	}
+
+	[Fact]
+	public void ReorderTabs_InvalidDocument_NoChange()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", false, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		var viewModel = new MainViewModel(preview, workspace);
+
+		viewModel.ReorderTabs("missing", 0);
+
+		// should remain unchanged
+		Assert.Single(viewModel.WorkspaceTabs);
+		Assert.Equal("doc-1", viewModel.WorkspaceTabs[0].DocumentId);
+	}
+
+	[Fact]
 	public void TabIndicators_ShouldReflectDirtyAndConflictFlags()
 	{
 		var preview = new FakePreviewService();
@@ -374,6 +416,42 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				Directory.Delete(tempRoot, true);
 			}
 		}
+	}
+
+	[Fact]
+	public void FileTree_ExpandedState_ShouldBePreservedAcrossWorkspaceRefresh()
+	{
+		var preview = new FakePreviewService();
+		// initial state: two top-level directories
+		var initialTree = new[]
+		{
+			new Muse.Workspace.FileTreeNode("/repo/dir-a", "dir-a", true, new[] { new Muse.Workspace.FileTreeNode("/repo/dir-a/file1.md", "file1.md", false, System.Array.Empty<Muse.Workspace.FileTreeNode>()) }),
+			new Muse.Workspace.FileTreeNode("/repo/dir-b", "dir-b", true, System.Array.Empty<Muse.Workspace.FileTreeNode>())
+		};
+
+		// updated state after refresh contains the same top-level paths (simulating reload)
+		var refreshedTree = new[]
+		{
+			new Muse.Workspace.FileTreeNode("/repo/dir-a", "dir-a", true, new[] { new Muse.Workspace.FileTreeNode("/repo/dir-a/file1.md", "file1.md", false, System.Array.Empty<Muse.Workspace.FileTreeNode>()) }),
+			new Muse.Workspace.FileTreeNode("/repo/dir-b", "dir-b", true, System.Array.Empty<Muse.Workspace.FileTreeNode>())
+		};
+
+		var state1 = new WorkspaceState("/repo", initialTree, System.Array.Empty<WorkspaceTabState>(), null);
+		var state2 = new WorkspaceState("/repo", refreshedTree, System.Array.Empty<WorkspaceTabState>(), null);
+		var workspace = new FakeWorkspaceService(state1, state2);
+		var viewModel = new MainViewModel(preview, workspace);
+
+		// expand the first directory in the current view
+		Assert.NotEmpty(viewModel.FileTree);
+		viewModel.FileTree[0].IsExpanded = true;
+		Assert.True(viewModel.FileTree[0].IsExpanded);
+
+		// trigger workspace refresh by opening next queued workspace state
+		workspace.OpenWorkspace("/repo");
+
+		// after refresh, the new FileTree should preserve the expanded path
+		Assert.NotEmpty(viewModel.FileTree);
+		Assert.True(viewModel.FileTree[0].IsExpanded);
 	}
 
 	[Fact]
@@ -734,7 +812,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			return _state;
 		}
 
-		public WorkspaceTabState OpenDocument(string filePath)
+		public OpenDocumentResult OpenDocument(string filePath)
 		{
 			var tab = new WorkspaceTabState(filePath, filePath, false, DateTimeOffset.UtcNow);
 			_state = _state with
@@ -743,7 +821,7 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 				ActiveDocumentId = tab.DocumentId
 			};
 			RaiseWorkspaceChanged();
-			return tab;
+			return OpenDocumentResult.Success(tab);
 		}
 
 		public bool CloseDocument(string documentId)
@@ -895,6 +973,23 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		public WorkspaceState GetState()
 		{
 			return _state;
+		}
+
+		public bool MoveTab(string documentId, int newIndex)
+		{
+			var tabs = _state.OpenTabs.ToList();
+			var index = tabs.FindIndex(t => t.DocumentId == documentId);
+			if (index < 0) return false;
+			if (newIndex < 0) newIndex = 0;
+			if (newIndex >= tabs.Count) newIndex = tabs.Count - 1;
+			if (index == newIndex) return true;
+			var item = tabs[index];
+			tabs.RemoveAt(index);
+			if (index < newIndex) newIndex--;
+			tabs.Insert(newIndex, item);
+			_state = _state with { OpenTabs = tabs };
+			RaiseWorkspaceChanged();
+			return true;
 		}
 
 		public IReadOnlyList<ConflictEvent> GetConflictEvents()

@@ -11,7 +11,7 @@ public sealed class InMemoryWorkspaceServiceTests
 		try
 		{
 			var service = new InMemoryWorkspaceService();
-			service.OpenDocument(Path.Combine(root, "README.md"));
+			_ = service.OpenDocument(Path.Combine(root, "README.md"));
 
 			var state = service.OpenWorkspace(root);
 
@@ -28,6 +28,82 @@ public sealed class InMemoryWorkspaceServiceTests
 	}
 
 	[Fact]
+	public void MoveTab_PersistsOrder_AndOpenWorkspaceRestoresOrder()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabARes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabA = tabARes.Tab!;
+			var tabBRes = service.OpenDocument(Path.Combine(root, "notes.md"));
+			var tabB = tabBRes.Tab!;
+
+			// move tabB to index 0 and persist
+			var moved = service.MoveTab(tabB.DocumentId, 0);
+			Assert.True(moved);
+
+			// create a fresh service and reopen workspace to verify restoration
+			var reloaded = new InMemoryWorkspaceService();
+			var state = reloaded.OpenWorkspace(root);
+
+			Assert.Equal(2, state.OpenTabs.Count);
+			Assert.Equal(tabB.DocumentId, state.OpenTabs[0].DocumentId);
+			Assert.Equal(tabA.DocumentId, state.OpenTabs[1].DocumentId);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void MoveTab_ShouldReorderTabs()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabARes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabA = tabARes.Tab!;
+			var tabBRes = service.OpenDocument(Path.Combine(root, "notes.md"));
+			var tabB = tabBRes.Tab!;
+
+			// move tabB to index 0
+			var moved = service.MoveTab(tabB.DocumentId, 0);
+			var state = service.GetState();
+
+			Assert.True(moved);
+			Assert.Equal(2, state.OpenTabs.Count);
+			Assert.Equal(tabB.DocumentId, state.OpenTabs[0].DocumentId);
+			Assert.Equal(tabA.DocumentId, state.OpenTabs[1].DocumentId);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void MoveTab_InvalidDocument_ShouldReturnFalse()
+	{
+		var service = new InMemoryWorkspaceService();
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			service.OpenWorkspace(root);
+			var result = service.MoveTab(Path.Combine(root, "missing.md"), 0);
+			Assert.False(result);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
 	public void OpenAndActivateDocument_ShouldSwitchActiveTab()
 	{
 		var root = CreateWorkspaceFixture();
@@ -35,8 +111,10 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			var service = new InMemoryWorkspaceService();
 			service.OpenWorkspace(root);
-			var tabA = service.OpenDocument(Path.Combine(root, "README.md"));
-			var tabB = service.OpenDocument(Path.Combine(root, "notes.md"));
+			var tabARes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabA = tabARes.Tab!;
+			var tabBRes = service.OpenDocument(Path.Combine(root, "notes.md"));
+			var tabB = tabBRes.Tab!;
 
 			var activated = service.ActivateDocument(tabA.DocumentId);
 			var state = service.GetState();
@@ -61,7 +139,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		try
 		{
 			service.OpenWorkspace(root);
-			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabRes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
 
 			var dirtyTab = service.MarkDirty(tab.DocumentId, true);
 			var scheduled = scheduler.DrainScheduled();
@@ -85,7 +164,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		try
 		{
 			service.OpenWorkspace(root);
-			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabRes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
 			service.MarkDirty(tab.DocumentId, true);
 
 			var saved = service.SaveDocument(tab.DocumentId, "# Updated");
@@ -133,7 +213,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		try
 		{
 			service.OpenWorkspace(root);
-			var tab = service.OpenDocument(Path.Combine(root, "missing-dir", "new.md"));
+			var tabRes = service.OpenDocument(Path.Combine(root, "missing-dir", "new.md"));
+			var tab = tabRes.Tab!;
 			service.MarkDirty(tab.DocumentId, true);
 
 			var result = service.SaveDocument(tab.DocumentId, "content");
@@ -156,7 +237,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			var writer = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
 			writer.OpenWorkspace(root);
-			var tab = writer.OpenDocument(Path.Combine(root, "README.md"));
+			var tabRes = writer.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
 			writer.UpdateDocumentDraft(tab.DocumentId, "# Recovered draft");
 			writer.FlushPendingAutoSaves();
 
@@ -182,7 +264,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			var service = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
 			service.OpenWorkspace(root);
-			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabRes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
 
 			File.WriteAllText(Path.Combine(root, "README.md"), "# Changed");
 			File.WriteAllText(Path.Combine(root, "new-note.md"), "new note");
@@ -206,7 +289,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			var service = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
 			service.OpenWorkspace(root);
-			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabRes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
 			service.UpdateDocumentDraft(tab.DocumentId, "# Local draft");
 
 			File.WriteAllText(Path.Combine(root, "README.md"), "# External change");
@@ -234,7 +318,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			var service = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
 			service.OpenWorkspace(root);
-			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabRes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
 			service.UpdateDocumentDraft(tab.DocumentId, "# Local draft");
 			File.WriteAllText(Path.Combine(root, "README.md"), "# External change");
 			service.RefreshWorkspaceFromDisk();
@@ -262,7 +347,8 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			var service = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
 			service.OpenWorkspace(root);
-			var tab = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabRes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
 			service.UpdateDocumentDraft(tab.DocumentId, "# Local draft");
 			File.WriteAllText(Path.Combine(root, "README.md"), "# External change");
 			service.RefreshWorkspaceFromDisk();
@@ -291,5 +377,30 @@ public sealed class InMemoryWorkspaceServiceTests
 		File.WriteAllText(Path.Combine(root, "notes.md"), "notes");
 		File.WriteAllText(Path.Combine(root, "docs", "guide.md"), "guide");
 		return root;
+	}
+
+	[Fact]
+	public void OpenDocument_BinaryFile_ShouldNotOpen()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var binPath = Path.Combine(root, "image.bin");
+			// write a small binary with a NUL byte
+			File.WriteAllBytes(binPath, new byte[] { 0x00, 0x01, 0x02, 0x03 });
+
+			var res = service.OpenDocument(binPath);
+			var state = service.GetState();
+
+			Assert.False(res.Succeeded);
+			Assert.Null(res.Tab);
+			Assert.DoesNotContain(state.OpenTabs, t => t.FilePath == Path.GetFullPath(binPath));
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
 	}
 }

@@ -6,7 +6,7 @@ public interface IWorkspaceService
 
 	WorkspaceState OpenWorkspace(string rootPath);
 
-	WorkspaceTabState OpenDocument(string filePath);
+	OpenDocumentResult OpenDocument(string filePath);
 
 	bool CloseDocument(string documentId);
 
@@ -31,4 +31,7 @@ public interface IWorkspaceService
 	SaveDocumentResult SaveDocument(string documentId, string content);
 
 	WorkspaceState GetState();
+
+	// Move an open tab to a new index within the open tabs list. Returns true if moved.
+	bool MoveTab(string documentId, int newIndex);
 }

@@ -8,12 +8,13 @@
 
   <!-- Icon font family and glyphs -->
   <FontFamily x:Key="IconFontFamily">Segoe MDL2 Assets</FontFamily>
-  <x:String x:Key="TabDirtyGlyph">●</x:String>
-  <x:String x:Key="TabConflictGlyph">⚠</x:String>
-  <x:String x:Key="TabCloseGlyph">✕</x:String>
-  <x:String x:Key="OpenGlyph">⤓</x:String>
-  <x:String x:Key="ExpandCollapsedGlyph">▸</x:String>
-  <x:String x:Key="ExpandExpandedGlyph">▾</x:String>
+  <!-- Use explicit Unicode codepoints for clarity and consistent rendering -->
+  <x:String x:Key="TabDirtyGlyph">&#x25CF;</x:String> <!-- Black Circle -->
+  <x:String x:Key="TabConflictGlyph">&#x26A0;</x:String> <!-- Warning Sign -->
+  <x:String x:Key="TabCloseGlyph">&#x2715;</x:String> <!-- Multiplication X -->
+  <x:String x:Key="OpenGlyph">&#x2913;</x:String> <!-- Downwards Arrow With Tip Leftwards -->
+  <x:String x:Key="ExpandCollapsedGlyph">&#x25B8;</x:String> <!-- Small Right-Pointing Triangle -->
+  <x:String x:Key="ExpandExpandedGlyph">&#x25BE;</x:String> <!-- Small Down-Pointing Triangle -->
   <!-- Tree item backgrounds and states -->
   <SolidColorBrush x:Key="TreeItemHoverBackground" Color="#0AFFFFFF" />
   <SolidColorBrush x:Key="TreeItemSelectedBackground" Color="#14FFFFFF" />

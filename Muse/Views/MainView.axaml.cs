@@ -36,6 +36,141 @@ public partial class MainView : UserControl
 		}
 	}
 
+	private Avalonia.Point? _dragStartPoint;
+	private string? _draggingDocumentId;
+	private bool _isDragging;
+	private const double DragThreshold = 6.0; // pixels
+
+	// track current drop target to update visual indicator
+	private string? _currentDropTargetDocumentId;
+
+	private void OnTabPointerPressed(object? sender, PointerPressedEventArgs e)
+	{
+		if (sender is not Control c) return;
+		if (c.DataContext is not Muse.ViewModels.WorkspaceTabViewModel vm) return;
+		_dragStartPoint = e.GetPosition(this);
+		_draggingDocumentId = vm.DocumentId;
+		_isDragging = false;
+	}
+
+	private void OnTabPointerMoved(object? sender, PointerEventArgs e)
+	{
+		if (_dragStartPoint is null || _draggingDocumentId is null) return;
+		var pos = e.GetPosition(this);
+		var dx = pos.X - _dragStartPoint.Value.X;
+		var dy = pos.Y - _dragStartPoint.Value.Y;
+		if (!_isDragging && Math.Sqrt(dx * dx + dy * dy) > DragThreshold)
+		{
+			_isDragging = true;
+		}
+
+		// if dragging, update drop target visual on the tab currently under pointer (sender bound per-tab)
+		if (!_isDragging) return;
+		try
+		{
+			if (sender is not Control c) return;
+			if (c.DataContext is not Muse.ViewModels.WorkspaceTabViewModel targetVm) return;
+			// compute pointer position relative to target control to decide before/after
+			var local = e.GetPosition(c);
+			var width = c.Bounds.Width;
+			var isBefore = local.X < width / 2.0;
+			// clear previous and set new flags
+			if (!string.Equals(_currentDropTargetDocumentId, targetVm.DocumentId, StringComparison.Ordinal))
+			{
+				ClearCurrentDropTarget();
+				_currentDropTargetDocumentId = targetVm.DocumentId;
+			}
+			targetVm.IsDropTarget = true;
+			targetVm.IsDropBefore = isBefore;
+			targetVm.IsDropAfter = !isBefore;
+		}
+		catch
+		{
+			// ignore visual update errors
+		}
+	}
+
+	private void OnTabPointerReleased(object? sender, PointerReleasedEventArgs e)
+	{
+		try
+		{
+			if (!_isDragging || _draggingDocumentId is null) return;
+			if (DataContext is not Muse.ViewModels.MainViewModel vm) return;
+			if (sender is not Control targetControl) return;
+			if (targetControl.DataContext is not Muse.ViewModels.WorkspaceTabViewModel targetVm) return;
+
+			// find index of target in current workspace tabs
+			var tabs = vm.WorkspaceTabs;
+			int newIndex = Array.FindIndex(tabs, t => t.DocumentId == targetVm.DocumentId);
+			if (newIndex < 0) return;
+
+			// if dropping onto a different tab, move
+			if (!string.Equals(_draggingDocumentId, targetVm.DocumentId, StringComparison.Ordinal))
+			{
+				vm.ReorderTabs(_draggingDocumentId, newIndex);
+			}
+		}
+		finally
+		{
+			_dragStartPoint = null;
+			_draggingDocumentId = null;
+			_isDragging = false;
+			ClearCurrentDropTarget();
+		}
+	}
+
+	private void ClearCurrentDropTarget()
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(_currentDropTargetDocumentId)) return;
+			if (DataContext is not Muse.ViewModels.MainViewModel vm) return;
+			var tabs = vm.WorkspaceTabs;
+			foreach (var t in tabs)
+			{
+				if (string.Equals(t.DocumentId, _currentDropTargetDocumentId, StringComparison.Ordinal))
+				{
+					t.IsDropTarget = false;
+					t.IsDropBefore = false;
+					t.IsDropAfter = false;
+					break;
+				}
+			}
+		}
+		catch
+		{
+			// ignore
+		}
+		finally
+		{
+			_currentDropTargetDocumentId = null;
+		}
+	}
+
+	private void OnFileTreeNodeDoubleTapped(object? sender, TappedEventArgs e)
+	{
+		if (sender is not Control c) return;
+		if (c.DataContext is not FileTreeNodeViewModel node) return;
+		if (node.IsDirectory) return;
+
+		if (node.OpenCommand?.CanExecute(null) == true)
+		{
+			node.OpenCommand.Execute(null);
+		}
+	}
+
+	private void OnFileTreeNodeTapped(object? sender, TappedEventArgs e)
+	{
+		if (sender is not Control c) return;
+		if (c.DataContext is not FileTreeNodeViewModel node) return;
+		// Only toggle expansion for directories on single tap
+		if (!node.IsDirectory) return;
+		if (node.ToggleExpandedCommand?.CanExecute(null) == true)
+		{
+			node.ToggleExpandedCommand.Execute(null);
+		}
+	}
+
 	// DI constructor used in production when resolving via IServiceProvider
 	public MainView(MainViewModel viewModel, IClipboardService clipboardService, IFileDebugWriter fileDebugWriter)
 	{
@@ -43,6 +178,56 @@ public partial class MainView : UserControl
 		DataContext = viewModel;
 		ClipboardService = clipboardService;
 		FileDebugWriter = fileDebugWriter;
+
+		// 订阅 ViewModel 的不支持格式对话框请求事件，视图负责以模态窗口展示
+		if (viewModel is not null)
+		{
+			var top = TopLevel.GetTopLevel(this) as Window;
+			// Prefer container-resolved IDialogService when available; fall back to inline dialog.
+			Muse.Services.IDialogService? ds = App.ServiceProvider?.GetService(typeof(Muse.Services.IDialogService)) as Muse.Services.IDialogService;
+
+			viewModel.ShowUnsupportedFileDialogRequested += async (title, message) =>
+			{
+				try
+				{
+					if (ds is not null)
+					{
+						await ds.ShowMessageAsync(title, message ?? string.Empty);
+					}
+					else
+					{
+						// fallback: attempt inline dialog (minimal)
+						var dialog = new Window
+						{
+							Title = title,
+							Width = 480,
+							Height = 180,
+							CanResize = false,
+							WindowStartupLocation = WindowStartupLocation.CenterOwner
+						};
+						var panel = new StackPanel { Margin = new Thickness(12) };
+						var text = new TextBlock { Text = message ?? string.Empty };
+						var btn = new Button { Content = "确定", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Width = 80, Margin = new Thickness(0, 12, 0, 0) };
+						btn.Click += (_, _) => dialog.Close();
+						panel.Children.Add(text);
+						panel.Children.Add(btn);
+						dialog.Content = panel;
+						if (top is Window owner)
+						{
+							await dialog.ShowDialog(owner);
+						}
+						else
+						{
+							dialog.Show();
+						}
+					}
+				}
+				catch
+				{
+					// ignore display errors
+				}
+			};
+		}
 	}
 
 	/// <summary>
@@ -194,6 +379,74 @@ public partial class MainView : UserControl
 		catch
 		{
 			// ignore
+		}
+	}
+
+	public async void OnLoadWorkspaceClick(object? sender, RoutedEventArgs e)
+	{
+		if (DataContext is not MainViewModel vm)
+		{
+			return;
+		}
+
+		try
+		{
+			var topLevel = TopLevel.GetTopLevel(this);
+			if (topLevel?.StorageProvider is null)
+			{
+				vm.SaveFeedbackIsError = true;
+				vm.SaveFeedbackMessage = "当前平台不支持工作区选择器。";
+				return;
+			}
+
+			var options = new FolderPickerOpenOptions
+			{
+				Title = "选择工作区目录",
+				AllowMultiple = false
+			};
+
+			try
+			{
+				if (!string.IsNullOrWhiteSpace(vm.WorkspaceRootDisplay))
+				{
+					var candidate = vm.WorkspaceRootDisplay!;
+					if (!Path.IsPathRooted(candidate))
+					{
+						candidate = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, candidate));
+					}
+					if (Directory.Exists(candidate))
+					{
+						options.SuggestedStartLocation = await topLevel.StorageProvider.TryGetFolderFromPathAsync(candidate).ConfigureAwait(true);
+					}
+				}
+			}
+			catch
+			{
+				// ignore suggested start location failures
+			}
+
+			var selected = await topLevel.StorageProvider.OpenFolderPickerAsync(options).ConfigureAwait(true);
+			if (selected.Count == 0)
+			{
+				return;
+			}
+
+			var selectedPath = selected[0].TryGetLocalPath();
+			if (string.IsNullOrWhiteSpace(selectedPath))
+			{
+				vm.SaveFeedbackIsError = true;
+				vm.SaveFeedbackMessage = "所选目录无法转换为本地路径。";
+				return;
+			}
+
+			vm.OpenWorkspaceAt(selectedPath);
+			vm.SaveFeedbackIsError = false;
+			vm.SaveFeedbackMessage = $"已加载工作区：{selectedPath}";
+		}
+		catch (Exception ex)
+		{
+			vm.SaveFeedbackIsError = true;
+			vm.SaveFeedbackMessage = $"选择工作区失败：{ex.Message}";
 		}
 	}
 }

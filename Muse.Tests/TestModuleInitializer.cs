@@ -42,6 +42,20 @@ namespace Muse.Tests
 				{
 					// ignore resource load failures in test environments
 				}
+
+				// Ensure Avalonia platform is initialized for controls that rely on platform services
+				try
+				{
+					// This will perform platform detection and minimal setup without starting an app loop.
+					Avalonia.AppBuilder.Configure<Muse.App>()
+						.UsePlatformDetect()
+						.SetupWithoutStarting();
+				}
+				catch
+				{
+					// best-effort only; if platform can't be initialized in the test environment,
+					// tests should continue to run with fallback behavior.
+				}
 			}
 			catch
 			{
