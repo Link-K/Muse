@@ -95,7 +95,7 @@
 		<DataTemplate x:Key="FileTreeNodeTemplate" x:DataType="vm:FileTreeNodeViewModel">
 			<StackPanel Classes="file-row" Spacing="2">
 				<StackPanel Orientation="Horizontal" Spacing="6" DoubleTapped="OnFileTreeNodeDoubleTapped" Tapped="OnFileTreeNodeTapped">
-					    <TextBlock Width="24" />
+					<TextBlock Width="24" />
 					<TextBlock Text="{Binding IconGlyph}"
 							   FontFamily="{StaticResource IconFontFamily}"
 							   Foreground="{StaticResource IconForeground}"
