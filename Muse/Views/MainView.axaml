@@ -315,11 +315,11 @@
 					<TextBlock Grid.Row="2" Text="打开标签" FontSize="13" FontWeight="SemiBold" Margin="0,16,0,8" />
 					<ScrollViewer Grid.Row="3" MaxHeight="250" HorizontalScrollBarVisibility="Auto">
 						<ItemsControl ItemsSource="{Binding WorkspaceTabs}">
-							<ItemsControl.ItemTemplate>
+								<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="vm:WorkspaceTabViewModel">
 									<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
-										<Button Command="{Binding DataContext.ActivateTabCommand, ElementName=Root}"
-												CommandParameter="{Binding DocumentId}"
+										<Button Command="{Binding ActivateCommand}"
+											CommandParameter="{Binding DocumentId}"
 												Background="Transparent"
 												BorderThickness="0"
 												Padding="0"
@@ -340,8 +340,8 @@
 												   FontSize="10"
 												   VerticalAlignment="Center"
 												   ToolTip.Tip="存在外部冲突" />
-										<Button Command="{Binding DataContext.CloseTabCommand, ElementName=Root}"
-												CommandParameter="{Binding DocumentId}"
+										<Button Command="{Binding CloseCommand}"
+											CommandParameter="{Binding DocumentId}"
 												Background="Transparent"
 												BorderThickness="0"
 												Padding="4"
@@ -389,9 +389,12 @@
 									<Setter Property="Background" Value="#2AFFFFFF" />
 								</Style>
 							</ItemsControl.Styles>
-							<ItemsControl.ItemTemplate>
+								<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="vm:WorkspaceTabViewModel">
-									<Border Classes="tab" Classes.active="{Binding IsActive}" CornerRadius="6,6,0,0" Margin="0,0,4,0" Padding="8,4" BorderThickness="1,1,1,0">
+								<Border Classes="tab" Classes.active="{Binding IsActive}" CornerRadius="6,6,0,0" Margin="0,0,4,0" Padding="8,4" BorderThickness="1,1,1,0"
+										PointerPressed="OnTabPointerPressed"
+										PointerMoved="OnTabPointerMoved"
+										PointerReleased="OnTabPointerReleased">
 										<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 											<TextBlock Text="{StaticResource TabDirtyGlyph}"
 													   Foreground="{StaticResource TabDirtyForeground}"
@@ -407,16 +410,16 @@
 													   FontSize="10"
 													   VerticalAlignment="Center"
 													   ToolTip.Tip="存在外部冲突" />
-											<Button Command="{Binding DataContext.ActivateTabCommand, ElementName=Root}"
-													CommandParameter="{Binding DocumentId}"
+											    <Button Command="{Binding ActivateCommand}"
+												    CommandParameter="{Binding DocumentId}"
 													Background="Transparent"
 													BorderThickness="0"
 													Padding="0"
 													Cursor="Hand">
 												<TextBlock Text="{Binding FileName}" ToolTip.Tip="{Binding FilePath}" TextTrimming="CharacterEllipsis" MaxWidth="140" Foreground="{StaticResource TreeForeground}" VerticalAlignment="Center" />
 											</Button>
-											<Button Command="{Binding DataContext.CloseTabCommand, ElementName=Root}"
-													CommandParameter="{Binding DocumentId}"
+											    <Button Command="{Binding CloseCommand}"
+												    CommandParameter="{Binding DocumentId}"
 													Background="Transparent"
 													BorderThickness="0"
 													Padding="4"

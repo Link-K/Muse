@@ -391,6 +391,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		}
 	}
 
+	// Reorder an open tab to a new index and refresh view state.
+	public void ReorderTabs(string documentId, int newIndex)
+	{
+		if (string.IsNullOrWhiteSpace(documentId)) return;
+		if (_workspaceService.MoveTab(documentId, newIndex))
+		{
+			SyncWorkspaceState();
+		}
+	}
+
 	[RelayCommand]
 	private void OpenSprintTaskDocument()
 	{
@@ -1162,7 +1172,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
 		// Expose file tree and open tabs for UI
 		FileTree = (state.FileTree is null) ? Array.Empty<FileTreeNodeViewModel>() : CreateTreeViewModels(state.FileTree);
-		WorkspaceTabs = state.OpenTabs.Select(t => new WorkspaceTabViewModel(t, t.DocumentId == state.ActiveDocumentId)).ToArray();
+		// Create WorkspaceTabViewModel instances and wire per-tab Activate/Close commands to avoid DataTemplate ElementName bindings
+		WorkspaceTabs = state.OpenTabs.Select(t =>
+		{
+			var docId = t.DocumentId;
+			var activate = new ActionCommand(() => ActivateTab(docId));
+			var close = new ActionCommand(() => CloseTab(docId));
+			return new WorkspaceTabViewModel(t, t.DocumentId == state.ActiveDocumentId, activate, close);
+		}).ToArray();
 
 		OnPropertyChanged(nameof(CanSaveActiveDocument));
 		OnPropertyChanged(nameof(ActiveDocumentConflictText));

@@ -28,6 +28,78 @@ public sealed class InMemoryWorkspaceServiceTests
 	}
 
 	[Fact]
+	public void MoveTab_PersistsOrder_AndOpenWorkspaceRestoresOrder()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabA = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabB = service.OpenDocument(Path.Combine(root, "notes.md"));
+
+			// move tabB to index 0 and persist
+			var moved = service.MoveTab(tabB.DocumentId, 0);
+			Assert.True(moved);
+
+			// create a fresh service and reopen workspace to verify restoration
+			var reloaded = new InMemoryWorkspaceService();
+			var state = reloaded.OpenWorkspace(root);
+
+			Assert.Equal(2, state.OpenTabs.Count);
+			Assert.Equal(tabB.DocumentId, state.OpenTabs[0].DocumentId);
+			Assert.Equal(tabA.DocumentId, state.OpenTabs[1].DocumentId);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void MoveTab_ShouldReorderTabs()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabA = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabB = service.OpenDocument(Path.Combine(root, "notes.md"));
+
+			// move tabB to index 0
+			var moved = service.MoveTab(tabB.DocumentId, 0);
+			var state = service.GetState();
+
+			Assert.True(moved);
+			Assert.Equal(2, state.OpenTabs.Count);
+			Assert.Equal(tabB.DocumentId, state.OpenTabs[0].DocumentId);
+			Assert.Equal(tabA.DocumentId, state.OpenTabs[1].DocumentId);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void MoveTab_InvalidDocument_ShouldReturnFalse()
+	{
+		var service = new InMemoryWorkspaceService();
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			service.OpenWorkspace(root);
+			var result = service.MoveTab(Path.Combine(root, "missing.md"), 0);
+			Assert.False(result);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
 	public void OpenAndActivateDocument_ShouldSwitchActiveTab()
 	{
 		var root = CreateWorkspaceFixture();

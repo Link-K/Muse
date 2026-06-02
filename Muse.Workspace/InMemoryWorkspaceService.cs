@@ -36,6 +36,55 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		DisposeWorkspaceWatcher();
 		var normalizedRoot = NormalizePath(rootPath);
 		var recoveryTabs = LoadRecoveryTabs(normalizedRoot);
+
+		// Try to load persisted tab order from settings and apply it to recovery tabs
+		var persistedOrder = LoadPersistedTabOrder(normalizedRoot);
+		if (persistedOrder?.Count > 0)
+		{
+			if (recoveryTabs.Count > 0)
+			{
+				// Reorder recoveryTabs according to persistedOrder, preserving only existing tabs
+				var dict = recoveryTabs.ToDictionary(t => t.DocumentId, t => t, StringComparer.Ordinal);
+				var ordered = new List<WorkspaceTabState>();
+				foreach (var id in persistedOrder)
+				{
+					if (dict.TryGetValue(id, out var tab)) ordered.Add(tab);
+				}
+				// append any tabs not present in persisted order
+				foreach (var t in recoveryTabs)
+				{
+					if (!ordered.Any(x => x.DocumentId == t.DocumentId)) ordered.Add(t);
+				}
+				recoveryTabs = ordered;
+			}
+			else
+			{
+				// No recovery snapshots found but persisted order exists — construct open tabs from persisted ids
+				var constructed = new List<WorkspaceTabState>();
+				foreach (var id in persistedOrder)
+				{
+					if (string.IsNullOrWhiteSpace(id)) continue;
+					try
+					{
+						var filePath = id.Replace('/', Path.DirectorySeparatorChar);
+						if (File.Exists(filePath))
+						{
+							constructed.Add(new WorkspaceTabState(id, id, false, DateTimeOffset.UtcNow));
+						}
+					}
+					catch
+					{
+						// ignore malformed persisted ids
+					}
+				}
+
+				// If we constructed any tabs, use them as the recoveryTabs so the workspace opens with persisted tabs
+				if (constructed.Count > 0)
+				{
+					recoveryTabs = constructed;
+				}
+			}
+		}
 		IReadOnlyList<FileTreeNode> fileTree = Directory.Exists(normalizedRoot)
 			? [BuildTree(normalizedRoot)]
 			: Array.Empty<FileTreeNode>();
@@ -418,6 +467,71 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		_state = _state with { OpenTabs = tabs };
 
 		return SaveDocumentResult.Success(updated);
+	}
+
+	public bool MoveTab(string documentId, int newIndex)
+	{
+		if (string.IsNullOrWhiteSpace(documentId)) return false;
+		var normalizedId = NormalizePath(documentId);
+		var tabs = _state.OpenTabs.ToList();
+		var oldIndex = tabs.FindIndex(t => t.DocumentId == normalizedId);
+		if (oldIndex < 0) return false;
+		if (newIndex < 0) newIndex = 0;
+		if (newIndex >= tabs.Count) newIndex = tabs.Count - 1;
+		if (oldIndex == newIndex) return true;
+
+		var item = tabs[oldIndex];
+		tabs.RemoveAt(oldIndex);
+		// adjust target index if removal was before insertion point
+		if (oldIndex < newIndex) newIndex--;
+		tabs.Insert(newIndex, item);
+		_state = _state with { OpenTabs = tabs };
+		// Persist the updated tab order for this workspace
+		try
+		{
+			SavePersistedTabOrder(_state.WorkspaceRoot, tabs.Select(t => t.DocumentId).ToArray());
+		}
+		catch
+		{
+			// ignore persistence failures to keep service resilient
+		}
+		RaiseWorkspaceChanged();
+		return true;
+	}
+
+	private static string GetSettingsDirectory(string normalizedRoot)
+	{
+		return Path.Combine(normalizedRoot.Replace('/', Path.DirectorySeparatorChar), ".muse", "settings");
+	}
+
+	private static string GetPersistedTabsPath(string normalizedRoot)
+	{
+		return Path.Combine(GetSettingsDirectory(normalizedRoot), "tabs.json");
+	}
+
+	private void SavePersistedTabOrder(string? normalizedRoot, string[] documentIds)
+	{
+		if (string.IsNullOrWhiteSpace(normalizedRoot)) return;
+		var settingsDir = GetSettingsDirectory(normalizedRoot);
+		Directory.CreateDirectory(settingsDir);
+		var path = GetPersistedTabsPath(normalizedRoot);
+		File.WriteAllText(path, JsonSerializer.Serialize(documentIds));
+	}
+
+	private List<string>? LoadPersistedTabOrder(string normalizedRoot)
+	{
+		try
+		{
+			var path = GetPersistedTabsPath(normalizedRoot);
+			if (!File.Exists(path)) return null;
+			var json = File.ReadAllText(path);
+			var arr = JsonSerializer.Deserialize<string[]>(json);
+			return arr is null ? null : new List<string>(arr);
+		}
+		catch
+		{
+			return null;
+		}
 	}
 
 	public WorkspaceState GetState()

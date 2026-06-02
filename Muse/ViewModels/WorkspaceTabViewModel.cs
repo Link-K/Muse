@@ -12,6 +12,10 @@ public sealed partial class WorkspaceTabViewModel : ObservableObject
 	public bool IsDirty { get; }
 	public bool HasExternalConflict { get; }
 
+	public System.Windows.Input.ICommand? ActivateCommand { get; }
+
+	public System.Windows.Input.ICommand? CloseCommand { get; }
+
 	[ObservableProperty]
 	private bool _isActive;
 
@@ -23,5 +27,12 @@ public sealed partial class WorkspaceTabViewModel : ObservableObject
 		IsDirty = state.IsDirty;
 		HasExternalConflict = state.HasExternalConflict;
 		IsActive = isActive;
+	}
+
+	public WorkspaceTabViewModel(WorkspaceTabState state, bool isActive, System.Windows.Input.ICommand? activateCommand, System.Windows.Input.ICommand? closeCommand)
+		: this(state, isActive)
+	{
+		ActivateCommand = activateCommand;
+		CloseCommand = closeCommand;
 	}
 }

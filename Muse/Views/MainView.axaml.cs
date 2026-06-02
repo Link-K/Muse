@@ -36,6 +36,60 @@ public partial class MainView : UserControl
 		}
 	}
 
+	private Avalonia.Point? _dragStartPoint;
+	private string? _draggingDocumentId;
+	private bool _isDragging;
+	private const double DragThreshold = 6.0; // pixels
+
+	private void OnTabPointerPressed(object? sender, PointerPressedEventArgs e)
+	{
+		if (sender is not Control c) return;
+		if (c.DataContext is not Muse.ViewModels.WorkspaceTabViewModel vm) return;
+		_dragStartPoint = e.GetPosition(this);
+		_draggingDocumentId = vm.DocumentId;
+		_isDragging = false;
+	}
+
+	private void OnTabPointerMoved(object? sender, PointerEventArgs e)
+	{
+		if (_dragStartPoint is null || _draggingDocumentId is null) return;
+		var pos = e.GetPosition(this);
+		var dx = pos.X - _dragStartPoint.Value.X;
+		var dy = pos.Y - _dragStartPoint.Value.Y;
+		if (!_isDragging && Math.Sqrt(dx * dx + dy * dy) > DragThreshold)
+		{
+			_isDragging = true;
+		}
+	}
+
+	private void OnTabPointerReleased(object? sender, PointerReleasedEventArgs e)
+	{
+		try
+		{
+			if (!_isDragging || _draggingDocumentId is null) return;
+			if (DataContext is not Muse.ViewModels.MainViewModel vm) return;
+			if (sender is not Control targetControl) return;
+			if (targetControl.DataContext is not Muse.ViewModels.WorkspaceTabViewModel targetVm) return;
+
+			// find index of target in current workspace tabs
+			var tabs = vm.WorkspaceTabs;
+			int newIndex = Array.FindIndex(tabs, t => t.DocumentId == targetVm.DocumentId);
+			if (newIndex < 0) return;
+
+			// if dropping onto a different tab, move
+			if (!string.Equals(_draggingDocumentId, targetVm.DocumentId, StringComparison.Ordinal))
+			{
+				vm.ReorderTabs(_draggingDocumentId, newIndex);
+			}
+		}
+		finally
+		{
+			_dragStartPoint = null;
+			_draggingDocumentId = null;
+			_isDragging = false;
+		}
+	}
+
 	// DI constructor used in production when resolving via IServiceProvider
 	public MainView(MainViewModel viewModel, IClipboardService clipboardService, IFileDebugWriter fileDebugWriter)
 	{
