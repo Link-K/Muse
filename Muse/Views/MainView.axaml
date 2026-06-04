@@ -24,6 +24,7 @@
 			<DoubleTransition Property="{x:Static Visual.OpacityProperty}" Duration="0:0:0.18" />
 		</Transitions>
 		<conv:ExpandSymbolConverter x:Key="ExpandSymbolConverter" />
+		<conv:PathToImageConverter x:Key="PathToImageConverter" />
 		<!-- Local converters only; brushes are provided by ThemeResources -->
 
 		<!-- DataTemplate for rendering a single preview table row -->
@@ -92,7 +93,14 @@
 						<!-- Fallback plain text preview removed -->
 					</StackPanel>
 				</Border>
-				<TextBlock IsVisible="{Binding IsParagraph}" Text="{Binding Content}" TextWrapping="Wrap" Opacity="0.96" Margin="0,2" />
+				<StackPanel>
+					<Image IsVisible="{Binding IsImage}"
+						   Source="{Binding ImageFilePath, Converter={StaticResource PathToImageConverter}}"
+						   Stretch="Uniform"
+						   MaxWidth="800"
+						   MaxHeight="600" />
+					<TextBlock IsVisible="{Binding IsParagraph}" Text="{Binding Content}" TextWrapping="Wrap" Opacity="0.96" Margin="0,2" />
+				</StackPanel>
 			</StackPanel>
 		</DataTemplate>
 
@@ -148,9 +156,7 @@
 							Command="{Binding ToggleSplitOrientationCommand}"
 							IsEnabled="{Binding IsSplitMode}" />
 					<Button Content="加载工作区" Click="OnLoadWorkspaceClick" />
-					<Button Content="保存文档"
-							Command="{Binding SaveActiveDocumentCommand}"
-							IsEnabled="{Binding CanSaveActiveDocument}" />
+					<!-- 粘贴按钮已移除：使用 Ctrl+V 粘贴或编辑菜单 -->
 				</WrapPanel>
 			</StackPanel>
 		</Border>
@@ -418,10 +424,11 @@
 								<TextBlock Grid.Row="0" Text="编辑模式：所见即所得（骨架）" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
 								<ScrollViewer Grid.Row="1">
 									<StackPanel Spacing="12">
-										<TextBox MinHeight="220"
+										<TextBox x:Name="EditorTextBox" MinHeight="220"
 												 AcceptsReturn="True"
 												 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-												 Watermark="在这里输入 Markdown（后续接入渲染引擎）" />
+												 Watermark="在这里输入 Markdown（后续接入渲染引擎）"
+												 KeyDown="OnEditorKeyDown" />
 										<ItemsControl ItemsSource="{Binding PreviewBlocks}" ItemTemplate="{StaticResource PreviewBlockTemplate}" />
 										<TextBlock IsVisible="{Binding HasPreviewDiagnostic}" Text="{Binding PreviewDiagnostic}" Foreground="#D13438" FontSize="12" />
 									</StackPanel>
@@ -439,10 +446,11 @@
 
 							<Grid Grid.Row="2" IsVisible="{Binding IsSplitHorizontal}" ColumnDefinitions="*,8,*">
 								<Border Grid.Column="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-									<TextBox AcceptsReturn="True"
+									<TextBox x:Name="SplitSourceTextBox" AcceptsReturn="True"
 											 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
 											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
-											 Watermark="左侧源码区（占位）" />
+											 Watermark="左侧源码区（占位）"
+											 KeyDown="OnEditorKeyDown" />
 								</Border>
 								<localControls:SafeGridSplitter Grid.Column="1"
 																Background="Transparent"
@@ -461,10 +469,11 @@
 
 							<Grid Grid.Row="2" IsVisible="{Binding IsSplitVertical}" RowDefinitions="*,8,*">
 								<Border Grid.Row="0" Padding="10" CornerRadius="8" Background="#0FFFFFFF" BorderBrush="#2FFFFFFF" BorderThickness="1">
-									<TextBox AcceptsReturn="True"
+									<TextBox x:Name="SplitSourceTextBoxV" AcceptsReturn="True"
 											 Text="{Binding MarkdownDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
 											 CaretIndex="{Binding SplitSourceCaretIndex, Mode=TwoWay}"
-											 Watermark="上方源码区（占位）" />
+											 Watermark="上方源码区（占位）"
+											 KeyDown="OnEditorKeyDown" />
 								</Border>
 								<localControls:SafeGridSplitter Grid.Row="1"
 																Background="Transparent"

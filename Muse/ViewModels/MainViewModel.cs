@@ -1332,6 +1332,33 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private void OpenFileNodeFromViewModel(FileTreeNodeViewModel vm)
 	{
 		if (vm == null || vm.IsDirectory) return;
+		// If the file looks like an image, open with system default viewer instead of opening as text document
+		try
+		{
+			var ext = Path.GetExtension(vm.Path)?.ToLowerInvariant();
+			var imageExts = new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".ico" };
+			if (!string.IsNullOrWhiteSpace(ext) && imageExts.Contains(ext))
+			{
+				try
+				{
+					var psi = new ProcessStartInfo
+					{
+						FileName = vm.Path,
+						UseShellExecute = true
+					};
+					Process.Start(psi);
+					return;
+				}
+				catch (Exception ex)
+				{
+					SaveFeedbackIsError = true;
+					SaveFeedbackMessage = $"打开图片失败：{ex.Message}";
+					return;
+				}
+			}
+		}
+		catch { }
+
 		var openResult = _workspaceService.OpenDocument(vm.Path);
 		if (!openResult.Succeeded)
 		{
