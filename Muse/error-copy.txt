@@ -1,1 +1,31 @@
-HandlePasteAsync ignored duplicate
+HandlePasteAsync ignored duplicate2026-06-05T16:51:42.9894061+08:00 HandlePasteAsync invoked: 2026-06-05T16:51:42.9786188+08:00
+2026-06-05T16:51:43.0611751+08:00 Clipboard image length: 335371
+2026-06-05T16:51:43.0659561+08:00 HandlePasteAsync chosen editor: SplitSourceTextBox (hash:51676454), activeDoc=C:/Users/sjlia/Downloads/test/任务卡模板.md
+2026-06-05T16:51:43.0994411+08:00 SaveImage returned rel=assets/pasted-20260605120512.png, abs=C:\Users\sjlia\Downloads\test\assets\pasted-20260605120512.png, exists=True, size=335371
+2026-06-05T16:51:43.1007498+08:00 Paste debug: capturedCaret=8, selStart=8, selLength=0, imgLen=335371, toInsertLen=37
+2026-06-05T16:51:43.1035704+08:00 HandlePasteAsync invoked: 2026-06-05T16:51:43.1031791+08:00
+2026-06-05T16:51:43.1487480+08:00 Clipboard image length: 335371
+2026-06-05T16:51:43.1502776+08:00 HandlePasteAsync chosen editor: SplitSourceTextBox (hash:51676454), activeDoc=C:/Users/sjlia/Downloads/test/任务卡模板.md
+2026-06-05T16:51:43.1511880+08:00 HandlePasteAsync ignored duplicate (debug-override, continuing)
+2026-06-05T16:51:43.1536752+08:00 SaveImage returned rel=assets/pasted-20260605120512.png, abs=C:\Users\sjlia\Downloads\test\assets\pasted-20260605120512.png, exists=True, size=335371
+2026-06-05T16:51:50.3063944+08:00 HandlePasteAsync invoked: 2026-06-05T16:51:50.3058469+08:00
+2026-06-05T16:51:50.3453008+08:00 Clipboard image length: 335371
+2026-06-05T16:51:50.3459633+08:00 HandlePasteAsync invoked: 2026-06-05T16:51:50.3457550+08:00
+2026-06-05T16:51:50.3464829+08:00 HandlePasteAsync chosen editor: SplitSourceTextBox (hash:51676454), activeDoc=C:/Users/sjlia/Downloads/test/任务卡模板.md
+2026-06-05T16:51:50.3879793+08:00 Clipboard image length: 335371
+2026-06-05T16:51:50.4168383+08:00 Paste debug: capturedCaret=127, selStart=127, selLength=0, imgLen=335371, toInsertLen=37
+2026-06-05T16:51:50.4173145+08:00 HandlePasteAsync chosen editor: SplitSourceTextBox (hash:51676454), activeDoc=C:/Users/sjlia/Downloads/test/任务卡模板.md
+2026-06-05T16:51:50.4176624+08:00 HandlePasteAsync ignored duplicate (debug-override, continuing)
+2026-06-05T16:51:50.4210839+08:00 SaveImage returned rel=assets/pasted-20260605120512.png, abs=C:\Users\sjlia\Downloads\test\assets\pasted-20260605120512.png, exists=True, size=335371
+2026-06-05T16:51:50.4216353+08:00 Paste debug: capturedCaret=127, selStart=127, selLength=0, imgLen=335371, toInsertLen=37
+2026-06-05T16:51:57.5188756+08:00 HandlePasteAsync invoked: 2026-06-05T16:51:57.5183407+08:00
+2026-06-05T16:51:57.5634505+08:00 Clipboard image length: 335371
+2026-06-05T16:51:57.5651503+08:00 HandlePasteAsync chosen editor: SplitSourceTextBox (hash:51676454), activeDoc=C:/Users/sjlia/Downloads/test/任务卡模板.md
+2026-06-05T16:51:57.5675729+08:00 HandlePasteAsync invoked: 2026-06-05T16:51:57.5672139+08:00
+2026-06-05T16:51:57.6547219+08:00 Clipboard image length: 335371
+2026-06-05T16:51:57.6558771+08:00 SaveImage returned rel=assets/pasted-20260605120512.png, abs=C:\Users\sjlia\Downloads\test\assets\pasted-20260605120512.png, exists=True, size=335371
+2026-06-05T16:51:57.6565343+08:00 Paste debug: capturedCaret=8, selStart=8, selLength=0, imgLen=335371, toInsertLen=37
+2026-06-05T16:51:57.6570517+08:00 HandlePasteAsync chosen editor: SplitSourceTextBox (hash:51676454), activeDoc=C:/Users/sjlia/Downloads/test/任务卡模板.md
+2026-06-05T16:51:57.6573889+08:00 HandlePasteAsync ignored duplicate (debug-override, continuing)
+2026-06-05T16:51:57.6642207+08:00 SaveImage returned rel=assets/pasted-20260605120512.png, abs=C:\Users\sjlia\Downloads\test\assets\pasted-20260605120512.png, exists=True, size=335371
+2026-06-05T16:51:57.6650048+08:00 Paste debug: capturedCaret=8, selStart=8, selLength=0, imgLen=335371, toInsertLen=37

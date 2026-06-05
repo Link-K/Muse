@@ -698,6 +698,7 @@ public partial class MainView : UserControl
 					var key = (Caret: caret, SelStart: selStart, SelLen: selLength, ImgLen: imgLen);
 					if (_lastPasteAt.HasValue && (now - _lastPasteAt.Value) < PasteDuplicateWindow && key.Equals(_lastPasteKey))
 					{
+						// Duplicate paste detected — ignore to prevent double insertion
 						try { var _ = FileDebugWriter?.WriteDebugFileAsync("HandlePasteAsync ignored duplicate"); } catch { }
 						try { Console.WriteLine("[DEBUG] HandlePasteAsync ignored duplicate"); } catch { }
 						return;
@@ -725,6 +726,14 @@ public partial class MainView : UserControl
 				}
 				try { var _ = FileDebugWriter?.WriteDebugFileAsync($"SaveImage returned rel={rel}, abs={absPath}, exists={File.Exists(absPath)}, size={(File.Exists(absPath) ? new FileInfo(absPath).Length : -1)}"); } catch { }
 				try { Console.WriteLine($"[DEBUG] SaveImage returned rel={rel}, abs={absPath}, exists={File.Exists(absPath)}, size={(File.Exists(absPath) ? new FileInfo(absPath).Length : -1)}"); } catch { }
+				try
+				{
+					if (DataContext is Muse.ViewModels.MainViewModel mvm)
+					{
+						try { mvm.RegisterPendingSavedImage(rel, absPath); } catch { }
+					}
+				}
+				catch { }
 			}
 			catch { }
 
@@ -757,10 +766,69 @@ public partial class MainView : UserControl
 							tb.Text = curText;
 							// move caret after inserted text
 							tb.CaretIndex = insertPos + toInsert.Length;
+							// Ensure ViewModel's MarkdownDraft is in sync so preview refresh happens
+							try
+							{
+								if (DataContext is Muse.ViewModels.MainViewModel mvm)
+								{
+									mvm.MarkdownDraft = tb.Text ?? string.Empty;
+									try { Console.WriteLine($"[DEBUG] Synchronized MainViewModel.MarkdownDraft (len={mvm.MarkdownDraft?.Length ?? 0})"); } catch { }
+								}
+							}
+							catch { }
 						}
 						catch { }
 					}, Avalonia.Threading.DispatcherPriority.Input);
 					try { await __op; } catch { }
+					// After inserting markdown into the editor, attempt to short-circuit preview update.
+					// Because preview rebuild may replace PreviewBlockViewModel instances, retry for a short period.
+					try
+					{
+						string absPath;
+						if (string.IsNullOrWhiteSpace(assetsRoot)) absPath = Path.GetFullPath(rel);
+						else absPath = Path.GetFullPath(Path.Combine(assetsRoot, Path.GetFileName(rel)));
+						try { Console.WriteLine($"[DEBUG] Short-circuit assign attempt abs={absPath}"); } catch { }
+						// run a background task that retries finding the matching preview block
+						_ = Task.Run(async () =>
+						{
+							const int attempts = 10;
+							const int delayMs = 120;
+							for (int i = 0; i < attempts; i++)
+							{
+								try
+								{
+									if (DataContext is not Muse.ViewModels.MainViewModel mvm) break;
+									var blocks = mvm.PreviewBlocks;
+									try { Console.WriteLine($"[DEBUG] Short-circuit retry {i}: previewBlocks count={(blocks?.Length ?? 0)}"); } catch { }
+									if (blocks is not null && blocks.Length > 0)
+									{
+										var match = blocks.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Content) && (p.Content.Contains(rel, StringComparison.OrdinalIgnoreCase) || p.Content.Contains(Path.GetFileName(rel), StringComparison.OrdinalIgnoreCase)));
+										if (match is not null)
+										{
+											try { await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => { try { Console.WriteLine($"[DEBUG] Found matching preview block on attempt {i}"); } catch { } match.AssignImagePath(absPath); }); } catch { }
+											try { Console.WriteLine($"[DEBUG] Assigned image path to preview block"); } catch { }
+											try
+											{
+												var writer = App.Resolve<Muse.Services.IFileDebugWriter>();
+												_ = writer?.WriteDebugFileAsync($"[DEBUG] Assigned image path to preview block abs={absPath} attempt={i}");
+											}
+											catch { }
+											break;
+										}
+									}
+								}
+								catch (Exception ex)
+								{
+									try { Console.WriteLine($"[DEBUG] Short-circuit retry exception: {ex}"); } catch { }
+								}
+								await Task.Delay(delayMs).ConfigureAwait(false);
+							}
+						});
+					}
+					catch (Exception ex)
+					{
+						try { Console.WriteLine($"[DEBUG] Short-circuit assign failed: {ex}"); } catch { }
+					}
 				}
 				catch { }
 			}
@@ -890,6 +958,14 @@ public partial class MainView : UserControl
 						}
 						try { var _ = FileDebugWriter?.WriteDebugFileAsync($"Drop SaveImage returned rel={rel}, abs={absPath}, exists={File.Exists(absPath)}, size={(File.Exists(absPath) ? new FileInfo(absPath).Length : -1)}"); } catch { }
 						try { Console.WriteLine($"[DEBUG] Drop SaveImage returned rel={rel}, abs={absPath}, exists={File.Exists(absPath)}, size={(File.Exists(absPath) ? new FileInfo(absPath).Length : -1)}"); } catch { }
+						try
+						{
+							if (DataContext is Muse.ViewModels.MainViewModel mvm)
+							{
+								try { mvm.RegisterPendingSavedImage(rel, absPath); } catch { }
+							}
+						}
+						catch { }
 					}
 					catch { }
 					if (tb is not null)

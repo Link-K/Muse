@@ -95,7 +95,7 @@
 				</Border>
 				<StackPanel>
 					<Image IsVisible="{Binding IsImage}"
-						   Source="{Binding ImageFilePath, Converter={StaticResource PathToImageConverter}}"
+						   Source="{Binding ImageBitmap}"
 						   Stretch="Uniform"
 						   MaxWidth="800"
 						   MaxHeight="600" />

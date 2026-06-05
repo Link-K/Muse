@@ -4,14 +4,18 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Avalonia.Media.Imaging;
 using Muse.Services;
 using Muse;
 using System.ComponentModel;
+using System.Collections.Generic;
 
 namespace Muse.ViewModels;
 
 public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 {
+	private readonly string _vmId = Guid.NewGuid().ToString("N");
+	public string VmId => _vmId;
 	public PreviewBlockViewModel(RenderedBlock block)
 	{
 		Kind = block.Kind;
@@ -23,26 +27,26 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 		TableRows = Array.Empty<PreviewTableRowViewModel>();
 
 		// detect image markdown like ![alt](url) or ![](url) and resolve local file path when possible
+		try { Console.WriteLine($"[DEBUG][_vm:{_vmId}] Constructed PreviewBlockViewModel for Line {block.LineNumber}"); } catch { }
 		TryParseImageFromContent(Content);
 
 		// Initialize commands to real implementations that use IClipboardService when available.
-		CopyCodeCommand = new ActionCommand(() =>
-		{
-			_ = CopyCodeAsync();
-		});
+		CopyCodeCommand = new ActionCommand(() => { _ = CopyCodeAsync(); });
+		CopyAnchorCommand = new ActionCommand(() => { _ = CopyAnchorAsync(); });
+	}
 
-		CopyAnchorCommand = new ActionCommand(() =>
-		{
-			_ = CopyAnchorAsync();
-		});
+	/// <summary>
+	/// Public helper to assign an image path and create the backing Bitmap.
+	/// Allows callers (e.g. view) to short-circuit preview update after saving an asset.
+	/// </summary>
+	public void AssignImagePath(string path)
+	{
+		SetImagePathAndBitmap(path);
 	}
 
 	public RenderedBlockKind Kind { get; }
-
 	public string Content { get; }
-
 	public string Source { get; }
-
 	public int LineNumber { get; }
 
 	public bool IsHeading => Kind == RenderedBlockKind.Heading;
@@ -55,14 +59,9 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 	public bool IsRenderable => !IsEmpty && !_suppressRendering;
 
 	public string[] TableCells { get; }
-
 	public bool HasTableCells => TableCells.Length > 0;
-
 	public bool ShowTableCells => HasTableCells && !IsTableDivider;
-
 	public bool IsTableDivider => IsTableRow && Source.Trim().All(static c => c == '|' || c == '-' || c == ':' || c == ' ');
-
-	// Fallback plain text preview removed — UI will no longer show a fallback text block.
 
 	public string TableDisplayText { get; private set; }
 
@@ -96,11 +95,36 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 		}
 	}
 
-	public bool ShowAlignedTableText => IsTableRow && !IsTableDivider && !string.IsNullOrWhiteSpace(TableDisplayText);
+	private Bitmap? _imageBitmap;
+	public Bitmap? ImageBitmap
+	{
+		get => _imageBitmap;
+		private set
+		{
+			if (!ReferenceEquals(_imageBitmap, value))
+			{
+				try
+				{
+					if (_imageBitmap is IDisposable d) d.Dispose();
+				}
+				catch { }
+				try { Console.WriteLine($"[DEBUG][_vm:{_vmId}] ImageBitmap setter assigning (null? {value is null})"); } catch { }
+				_imageBitmap = value;
+				try { Console.WriteLine($"[DEBUG][_vm:{_vmId}] ImageBitmap setter assigned"); } catch { }
+				try
+				{
+					var writer = App.Resolve<Muse.Services.IFileDebugWriter>();
+					_ = writer?.WriteDebugFileAsync($"[DEBUG][_vm:{_vmId}] ImageBitmap assigned (null? {value is null})");
+				}
+				catch { }
+				OnPropertyChanged(nameof(ImageBitmap));
+			}
+		}
+	}
 
+	public bool ShowAlignedTableText => IsTableRow && !IsTableDivider && !string.IsNullOrWhiteSpace(TableDisplayText);
 	public PreviewTableRowViewModel[] TableRows { get; private set; }
 
-	// Extracted language for fenced code blocks (best-effort from Source)
 	public string CodeFenceLanguage
 	{
 		get
@@ -114,19 +138,16 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 	}
 
 	public ICommand CopyCodeCommand { get; }
-
 	public ICommand CopyAnchorCommand { get; }
 
 	private IClipboardService ResolveClipboard()
 	{
 		try
 		{
-			// Prefer DI when available
 			return App.Resolve<IClipboardService>();
 		}
 		catch
 		{
-			// Fallback to runtime implementation
 			return new AvaloniaClipboardService();
 		}
 	}
@@ -138,10 +159,7 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 			var svc = ResolveClipboard();
 			await svc.SetTextAsync(Content ?? string.Empty).ConfigureAwait(false);
 		}
-		catch
-		{
-			// best-effort: swallow exceptions to avoid breaking UI
-		}
+		catch { }
 	}
 
 	private static string Slugify(string s)
@@ -150,7 +168,6 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 		var lowered = s.ToLowerInvariant();
 		var arr = lowered.Select(c => (char.IsLetterOrDigit(c) ? c : '-')).ToArray();
 		var joined = new string(arr);
-		// collapse multiple dashes
 		while (joined.Contains("--")) joined = joined.Replace("--", "-");
 		return joined.Trim('-');
 	}
@@ -165,10 +182,7 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 			var svc = ResolveClipboard();
 			await svc.SetTextAsync(anchor).ConfigureAwait(false);
 		}
-		catch
-		{
-			// swallow
-		}
+		catch { }
 	}
 
 	public bool ShowTableGrid => IsTableRow && TableRows.Length > 0;
@@ -215,7 +229,6 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 		{
 			try { Console.WriteLine($"[DEBUG] TryParseImageFromContent content='{content}'"); } catch { }
 			if (string.IsNullOrWhiteSpace(content)) return;
-			// simple parse: look for ![alt](url)
 			var start = content.IndexOf("![", StringComparison.Ordinal);
 			if (start < 0) return;
 			var openParen = content.IndexOf('(', start);
@@ -224,25 +237,22 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 			var url = content.Substring(openParen + 1, closeParen - openParen - 1).Trim();
 			try { Console.WriteLine($"[DEBUG] Parsed image url: '{url}'"); } catch { }
 			if (string.IsNullOrWhiteSpace(url)) return;
-			// ignore absolute URLs (http/https/data)
 			if (url.StartsWith("http:", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https:", StringComparison.OrdinalIgnoreCase) || url.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return;
-			// normalize leading slash
 			if (url.StartsWith("/")) url = url.TrimStart('/');
-			// attempt to resolve relative to the active document directory first (assets next to md file)
+
 			try
 			{
 				var ws = App.Resolve<Muse.Workspace.IWorkspaceService>();
 				var state = ws?.GetState();
 				var activeId = state?.ActiveDocumentId;
 				var activeTab = state?.OpenTabs?.FirstOrDefault(t => string.Equals(t.DocumentId, activeId, StringComparison.Ordinal));
-				var candidates = new System.Collections.Generic.List<string>();
+				var candidates = new List<string>();
 				if (activeTab is not null && !string.IsNullOrWhiteSpace(activeTab.FilePath))
 				{
 					var docDir = Path.GetDirectoryName(activeTab.FilePath) ?? Environment.CurrentDirectory;
 					candidates.Add(Path.Combine(docDir, url.Replace('/', Path.DirectorySeparatorChar)));
 					candidates.Add(Path.Combine(docDir, "assets", Path.GetFileName(url)));
 				}
-				// also check all open tabs' dirs
 				var allOpenTabs = state?.OpenTabs;
 				if (allOpenTabs is not null)
 				{
@@ -254,65 +264,44 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 						candidates.Add(Path.Combine(d, "assets", Path.GetFileName(url)));
 					}
 				}
-				// repo-level candidates
 				var repoRootCandidate = FindRepoRoot(AppContext.BaseDirectory ?? Environment.CurrentDirectory);
 				if (!string.IsNullOrWhiteSpace(repoRootCandidate))
 				{
 					candidates.Add(Path.Combine(repoRootCandidate, "files", url.Replace('/', Path.DirectorySeparatorChar)));
 					candidates.Add(Path.Combine(repoRootCandidate, "files", "assets", Path.GetFileName(url)));
 				}
-				// also check current working dir
 				candidates.Add(Path.GetFullPath(url.Replace('/', Path.DirectorySeparatorChar)));
 				candidates.Add(Path.Combine(Environment.CurrentDirectory, url.Replace('/', Path.DirectorySeparatorChar)));
-				// dedupe candidates
 				candidates = candidates.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 				foreach (var candidate in candidates)
 				{
 					try { Console.WriteLine($"[DEBUG] Checking candidate: {candidate}"); } catch { }
 					if (File.Exists(candidate))
 					{
-						IsImage = true;
-						ImageFilePath = candidate;
+						SetImagePathAndBitmap(candidate);
 						try { Console.WriteLine($"[DEBUG] Image resolved to: {candidate}"); } catch { }
 						return;
 					}
 				}
 				try { Console.WriteLine($"[DEBUG] Active tab didn't resolve image, will try open tabs"); } catch { }
-				// If not found in active tab, try all open tabs' assets (helpful in split view where preview context may differ)
-				try
+				var openTabs = state?.OpenTabs;
+				if (openTabs is not null)
 				{
-					var openTabs = state?.OpenTabs;
-					if (openTabs is not null)
+					foreach (var t in openTabs)
 					{
-						foreach (var t in openTabs)
-						{
-							if (t is null || string.IsNullOrWhiteSpace(t.FilePath)) continue;
-							var docDir2 = Path.GetDirectoryName(t.FilePath) ?? Environment.CurrentDirectory;
-							var candidate2 = Path.Combine(docDir2, url.Replace('/', Path.DirectorySeparatorChar));
-							if (File.Exists(candidate2))
-							{
-								IsImage = true;
-								ImageFilePath = candidate2;
-								return;
-							}
-							var assetCandidate2 = Path.Combine(docDir2, "assets", Path.GetFileName(url));
-							if (File.Exists(assetCandidate2))
-							{
-								IsImage = true;
-								ImageFilePath = assetCandidate2;
-								return;
-							}
-						}
+						if (t is null || string.IsNullOrWhiteSpace(t.FilePath)) continue;
+						var docDir2 = Path.GetDirectoryName(t.FilePath) ?? Environment.CurrentDirectory;
+						var candidate2 = Path.Combine(docDir2, url.Replace('/', Path.DirectorySeparatorChar));
+						if (File.Exists(candidate2)) { SetImagePathAndBitmap(candidate2); return; }
+						var assetCandidate2 = Path.Combine(docDir2, "assets", Path.GetFileName(url));
+						if (File.Exists(assetCandidate2)) { SetImagePathAndBitmap(assetCandidate2); return; }
 					}
 				}
-				catch { }
 			}
 			catch { }
 
-			// If not resolved by workspace/OpenTabs, try Source-based and CWD fallbacks
 			try
 			{
-				// if Source appears to be a file path, try its directory
 				if (!string.IsNullOrWhiteSpace(Source))
 				{
 					try
@@ -324,14 +313,13 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 							var candidateS = Path.Combine(srcDir, url.Replace('/', Path.DirectorySeparatorChar));
 							var assetCandidateS = Path.Combine(srcDir, "assets", Path.GetFileName(url));
 							try { Console.WriteLine($"[DEBUG] Fallback Source check candidate: {candidateS}"); } catch { }
-							if (File.Exists(candidateS)) { IsImage = true; ImageFilePath = candidateS; try { Console.WriteLine($"[DEBUG] Image resolved via Source to: {candidateS}"); } catch { } return; }
+							if (File.Exists(candidateS)) { SetImagePathAndBitmap(candidateS); try { Console.WriteLine($"[DEBUG] Image resolved via Source to: {candidateS}"); } catch { } return; }
 							try { Console.WriteLine($"[DEBUG] Fallback Source check assetCandidate: {assetCandidateS}"); } catch { }
-							if (File.Exists(assetCandidateS)) { IsImage = true; ImageFilePath = assetCandidateS; try { Console.WriteLine($"[DEBUG] Image resolved via Source asset: {assetCandidateS}"); } catch { } return; }
+							if (File.Exists(assetCandidateS)) { SetImagePathAndBitmap(assetCandidateS); try { Console.WriteLine($"[DEBUG] Image resolved via Source asset: {assetCandidateS}"); } catch { } return; }
 						}
 					}
 					catch { }
 				}
-				// cwd
 				try
 				{
 					var cwdCandidate = Path.Combine(Environment.CurrentDirectory, url.Replace('/', Path.DirectorySeparatorChar));
@@ -345,7 +333,6 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 			}
 			catch { }
 
-			// fallback: attempt to resolve to repository files/<url>
 			var repoRoot = FindRepoRoot(AppContext.BaseDirectory ?? Environment.CurrentDirectory);
 			string candidatePath;
 			if (!string.IsNullOrWhiteSpace(repoRoot))
@@ -358,16 +345,13 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 			}
 			if (File.Exists(candidatePath))
 			{
-				IsImage = true;
-				ImageFilePath = candidatePath;
+				SetImagePathAndBitmap(candidatePath);
 			}
 
-			// If still not found and url starts with assets/, try limited filesystem search for the filename
 			if (!IsImage && url.StartsWith("assets/", StringComparison.OrdinalIgnoreCase))
 			{
 				var fileName = Path.GetFileName(url);
 				try { Console.WriteLine($"[DEBUG] Beginning limited search for {fileName}"); } catch { }
-				// 1) Walk up from AppContext.BaseDirectory and check parent/assets and parent/files/assets
 				try
 				{
 					var dir = new DirectoryInfo(AppContext.BaseDirectory ?? Environment.CurrentDirectory);
@@ -377,60 +361,114 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 						var p1 = Path.Combine(dir.FullName, "assets", fileName);
 						var p2 = Path.Combine(dir.FullName, "files", "assets", fileName);
 						try { Console.WriteLine($"[DEBUG] LimitedSearch check: {p1}"); } catch { }
-						if (File.Exists(p1)) { IsImage = true; ImageFilePath = p1; try { Console.WriteLine($"[DEBUG] LimitedSearch found: {p1}"); } catch { } break; }
+						if (File.Exists(p1)) { SetImagePathAndBitmap(p1); try { Console.WriteLine($"[DEBUG] LimitedSearch found: {p1}"); } catch { } break; }
 						try { Console.WriteLine($"[DEBUG] LimitedSearch check: {p2}"); } catch { }
-						if (File.Exists(p2)) { IsImage = true; ImageFilePath = p2; try { Console.WriteLine($"[DEBUG] LimitedSearch found: {p2}"); } catch { } break; }
+						if (File.Exists(p2)) { SetImagePathAndBitmap(p2); try { Console.WriteLine($"[DEBUG] LimitedSearch found: {p2}"); } catch { } break; }
 						dir = dir.Parent;
 						depth++;
 					}
 				}
 				catch { }
 				// 2) check user's Downloads common locations
-				if (!IsImage)
+				try
 				{
-					try
-					{
-						var userDl = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-						var candidates = new[] {
-							Path.Combine(userDl, "assets", fileName),
-							Path.Combine(userDl, "test", "assets", fileName),
-							Path.Combine(userDl, fileName)
-						};
-						foreach (var c in candidates)
-						{
-							try { Console.WriteLine($"[DEBUG] Downloads check: {c}"); } catch { }
-							if (File.Exists(c)) { IsImage = true; ImageFilePath = c; try { Console.WriteLine($"[DEBUG] Downloads found: {c}"); } catch { } break; }
-						}
-					}
-					catch { }
+					var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+					var d1 = Path.Combine(downloads, fileName);
+					if (File.Exists(d1)) { SetImagePathAndBitmap(d1); return; }
 				}
+				catch { }
 			}
 		}
-		catch { }
+		catch (Exception ex)
+		{
+			try { Console.WriteLine($"[DEBUG] TryParseImageFromContent exception: {ex}"); } catch { }
+		}
 	}
 
 	private static string? FindRepoRoot(string start)
 	{
 		try
 		{
-			var dir = new DirectoryInfo(start);
-			while (dir != null)
+			var dir = new DirectoryInfo(start ?? Environment.CurrentDirectory);
+			int depth = 0;
+			while (dir != null && depth < 8)
 			{
-				if (dir.GetFiles("*.sln").Any() || Directory.Exists(Path.Combine(dir.FullName, ".git"))) return dir.FullName;
+				if (File.Exists(Path.Combine(dir.FullName, "Muse.sln"))) return dir.FullName;
 				dir = dir.Parent;
+				depth++;
 			}
 		}
 		catch { }
 		return null;
 	}
 
-	public event PropertyChangedEventHandler? PropertyChanged;
+	private void SetImagePathAndBitmap(string path)
+	{
+		try
+		{
+			try { Console.WriteLine($"[DEBUG] SetImagePathAndBitmap start for: {path}"); } catch { }
+			IsImage = true;
+			ImageFilePath = path;
+			if (!File.Exists(path))
+			{
+				try { Console.WriteLine($"[DEBUG] SetImagePathAndBitmap file not exists: {path}"); } catch { }
+				return;
+			}
+			var bytes = File.ReadAllBytes(path);
+			try { Console.WriteLine($"[DEBUG] Read {bytes.Length} bytes for bitmap"); } catch { }
+			try
+			{
+				var writer = App.Resolve<Muse.Services.IFileDebugWriter>();
+				_ = writer?.WriteDebugFileAsync($"[DEBUG][_vm:{_vmId}] SetImagePathAndBitmap read {bytes.Length} bytes for {path}");
+			}
+			catch { }
+			if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+			{
+				var bmp = Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+				{
+					var ms = new MemoryStream(bytes);
+					return new Bitmap(ms);
+				}).GetAwaiter().GetResult();
+				try { Console.WriteLine($"[DEBUG][_vm:{_vmId}] Created Bitmap on UI thread"); } catch { }
+				try
+				{
+					var writer = App.Resolve<Muse.Services.IFileDebugWriter>();
+					_ = writer?.WriteDebugFileAsync($"[DEBUG][_vm:{_vmId}] Created Bitmap on UI thread for {path}");
+				}
+				catch { }
+				ImageBitmap = bmp;
+			}
+			else
+			{
+				var ms = new MemoryStream(bytes);
+				try { Console.WriteLine($"[DEBUG][_vm:{_vmId}] Created Bitmap on current thread"); } catch { }
+				try
+				{
+					var writer = App.Resolve<Muse.Services.IFileDebugWriter>();
+					_ = writer?.WriteDebugFileAsync($"[DEBUG][_vm:{_vmId}] Created Bitmap on current thread for {path}");
+				}
+				catch { }
+				ImageBitmap = new Bitmap(ms);
+			}
+			try { Console.WriteLine($"[DEBUG][_vm:{_vmId}] SetImagePathAndBitmap finished for: {path}"); } catch { }
+			try
+			{
+				var writer = App.Resolve<Muse.Services.IFileDebugWriter>();
+				_ = writer?.WriteDebugFileAsync($"[DEBUG][_vm:{_vmId}] SetImagePathAndBitmap finished for: {path}");
+			}
+			catch { }
+		}
+		catch (Exception ex)
+		{
+			try { Console.WriteLine($"[DEBUG] SetImagePathAndBitmap exception: {ex}"); } catch { }
+		}
+	}
 
+	public event PropertyChangedEventHandler? PropertyChanged;
 	private void OnPropertyChanged(string name)
 	{
 		try
 		{
-			// Ensure PropertyChanged is raised on UI thread for Avalonia bindings
 			if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
 			{
 				_ = Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)));
@@ -439,12 +477,10 @@ public sealed class PreviewBlockViewModel : INotifyPropertyChanged
 		}
 		catch
 		{
-			// fall through to direct invoke if Dispatcher not available
+			// fall through
 		}
-
 		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 	}
-
 }
 
 internal sealed class ActionCommand : ICommand

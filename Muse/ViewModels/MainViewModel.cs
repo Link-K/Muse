@@ -40,6 +40,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private DateTimeOffset? _conflictLogPreferenceNextRetryAt;
 	private Timer? _conflictLogPreferenceCountdownTimer;
 
+	// Pending saved images to inject into preview blocks (rel -> abs)
+	private readonly object _pendingSavedImagesLock = new object();
+	private readonly Queue<KeyValuePair<string, string>> _pendingSavedImages = new();
+
 #if DEBUG
 	private int _debugConflictLogFlushAttemptCount;
 	private int _debugConflictLogFlushFailureCount;
@@ -839,14 +843,75 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		PreviewBlocks = BuildPreviewBlocks(viewState.Blocks);
 	}
 
-	private static PreviewBlockViewModel[] BuildPreviewBlocks(IReadOnlyList<RenderedBlock>? blocks)
+	private PreviewBlockViewModel[] BuildPreviewBlocks(IReadOnlyList<RenderedBlock>? blocks)
 	{
 		if (blocks is null || blocks.Count == 0)
 		{
 			return Array.Empty<PreviewBlockViewModel>();
 		}
 
-		var previewBlocks = blocks.Select(static b => new PreviewBlockViewModel(b)).ToArray();
+		var previewBlocks = blocks.Select(b => new PreviewBlockViewModel(b)).ToArray();
+		// Log created VM ids for debug correlation
+		try
+		{
+			var writer = App.Resolve<Muse.Services.IFileDebugWriter>();
+			var ids = string.Join(",", previewBlocks.Select(p => p.VmId));
+			_ = writer?.WriteDebugFileAsync($"[DEBUG] BuildPreviewBlocks created VMs: {ids}");
+			// Also log mapping of LineNumber -> VmId for easier correlation with SetImagePath logs
+			try
+			{
+				var mappings = string.Join(",", previewBlocks.Select(p => $"{p.LineNumber}:{p.VmId}"));
+				_ = writer?.WriteDebugFileAsync($"[DEBUG] BuildPreviewBlocks mappings (Line:VmId): {mappings}");
+			}
+			catch { }
+		}
+		catch { }
+		// If there are any pending saved images registered by the view (paste/drop), inject them into newly created VMs now.
+		try
+		{
+			KeyValuePair<string, string>[] pendingSnapshot;
+			lock (_pendingSavedImagesLock)
+			{
+				pendingSnapshot = _pendingSavedImages.ToArray();
+			}
+			if (pendingSnapshot is not null && pendingSnapshot.Length > 0)
+			{
+				foreach (var p in pendingSnapshot)
+				{
+					var rel = p.Key;
+					var abs = p.Value;
+					// find a preview block whose content contains the relative path
+					var match = previewBlocks.FirstOrDefault(pb => !string.IsNullOrWhiteSpace(pb.Content) && pb.Content.Contains(rel, StringComparison.OrdinalIgnoreCase));
+					if (match is not null)
+					{
+						try
+						{
+							match.AssignImagePath(abs);
+							var writer2 = App.Resolve<Muse.Services.IFileDebugWriter>();
+							_ = writer2?.WriteDebugFileAsync($"[DEBUG] Injected pending saved image rel={rel} abs={abs} into vm={match.VmId}");
+						}
+						catch { }
+						// remove matched pending entry
+						try
+						{
+							lock (_pendingSavedImagesLock)
+							{
+								var list = _pendingSavedImages.ToList();
+								var item = list.FirstOrDefault(k => string.Equals(k.Key, rel, StringComparison.OrdinalIgnoreCase) && string.Equals(k.Value, abs, StringComparison.OrdinalIgnoreCase));
+								if (!item.Equals(default(KeyValuePair<string, string>)))
+								{
+									list.Remove(item);
+									_pendingSavedImages.Clear();
+									foreach (var kv in list) _pendingSavedImages.Enqueue(kv);
+								}
+							}
+						}
+						catch { }
+					}
+				}
+			}
+		}
+		catch { }
 		ApplyAlignedTableText(previewBlocks);
 		return previewBlocks;
 	}
@@ -984,6 +1049,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		if (_enableConflictLogPreferencePersistence)
 		{
 			LoadConflictLogPreferences();
+		}
+	}
+
+	/// <summary>
+	/// Register a recently saved image (relative path and absolute path) so that
+	/// it can be injected into PreviewBlockViewModel instances when the preview is rebuilt.
+	/// </summary>
+	public void RegisterPendingSavedImage(string relativePath, string absolutePath)
+	{
+		if (string.IsNullOrWhiteSpace(relativePath) || string.IsNullOrWhiteSpace(absolutePath)) return;
+		lock (_pendingSavedImagesLock)
+		{
+			// avoid duplicates
+			if (!_pendingSavedImages.Any(k => string.Equals(k.Key, relativePath, StringComparison.OrdinalIgnoreCase) && string.Equals(k.Value, absolutePath, StringComparison.OrdinalIgnoreCase)))
+			{
+				_pendingSavedImages.Enqueue(new KeyValuePair<string, string>(relativePath, absolutePath));
+			}
 		}
 	}
 
