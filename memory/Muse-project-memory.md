@@ -49,3 +49,29 @@
 	- 当 UI 看起来“没刷新”时，分两条线索：PropertyChanged 是否在正确实例/线程触发；渲染器（Bitmap）是否在 UI 线程并且没有被文件锁住。
 	- 在复杂回退查找（多候选目录）时记录每一步的候选与结果，便于排查分屏/工作区上下文差异。
 - 验证与后续：已在 Windows 环境手工复现并验证通过；建议补充集成测试并把 Win32 特定逻辑用平台判定保护。
+
+## 2026-06-05: 图片粘贴注入修复与进度（S2-008）
+- 目标：保证粘贴/拖拽保存的图片在预览中立即显示，避免因 PreviewBlockViewModel 被重建导致的竞态（VmId mismatch）。
+- 已完成要点：
+	- 在 `MainViewModel` 中新增待注入队列（`_pendingSavedImages`）与线程安全注册方法 `RegisterPendingSavedImage(relativePath, absolutePath)`，用于在保存图片后记录待注入项。
+	- 将 `BuildPreviewBlocks` 由静态改为实例方法；在构建 `PreviewBlockViewModel` 列表后，快照 pending 队列并尝试根据 markdown 中包含的相对路径匹配对应的 `PreviewBlockViewModel`，若匹配则在构造阶段调用 `AssignImagePath(abs)` 进行原子注入并从队列移除。
+	- 在 `Views/MainView.axaml.cs` 的粘贴与拖拽流程中，在 `SaveImageAsync` 返回后调用 `mvm.RegisterPendingSavedImage(rel, absPath)` 注册待注入项（同时保留原有短路重试逻辑作为补救）。
+	- 已本地运行 `dotnet build`，解决方案成功构建（若干 warning，无错误）。
+- 日志与验证：
+	- 建议在运行时观察 `files/error-copy.txt` 中条目，确认 `SaveImage returned rel=...`、`BuildPreviewBlocks mappings (Line:VmId): ...` 与 `ImageBitmap assigned` 日志的 VmId 是否一致，从而验证赋值命中活动 VM。
+- 后续建议与待办：
+	- 运行应用并在编辑器执行粘贴/拖拽图片以产生运行时日志；若仍见不稳定情况，可将 pending 注入逻辑增强为“基于行号或更精确的行内锚点匹配”，或在 Preview 构建阶段将 image 字节直接交由同步创建 Bitmap（更大改动）。
+	- 为粘贴场景添加集成测试（可模拟保存、刷新 preview、断言预览 VM 已包含 Bitmap），并在 CI 上运行以防回归。
+	- 考虑将短路重试逻辑作为补救手段保留，但首要策略应为在 VM 构造时注入以减少竞态窗口。
+
+### 本次变更影响的文件（关键）
+- Muse/ViewModels/MainViewModel.cs — 新增 `_pendingSavedImages`、`RegisterPendingSavedImage`，并将 `BuildPreviewBlocks` 改为实例方法以支持注入逻辑。
+- Muse/Views/MainView.axaml.cs — 在粘贴（Paste）与拖拽（Drop）处理处注册 pending saved image。
+- Muse/ViewModels/PreviewBlockViewModel.cs — 保持 `AssignImagePath`/`SetImagePathAndBitmap` 逻辑（UI 线程创建 Bitmap）。
+
+### 风险与注意事项
+- 若文档中的相对路径格式或编辑器插入位置与预期不符，匹配失败的概率会上升；建议在插入时保证 `![](<rel>)` 的格式与保存返回的一致（当前以 `assets/filename` 为常见形式）。
+- 多光标/并发编辑场景下，插入位置可能被并发修改，尚需小心并发冲突。
+
+### 结论
+- 已完成大部分代码改动并成功构建；下一步请在应用中实际粘贴图片并把新日志提供给我，我将进一步分析 VmId 是否命中并收尾测试用例与文档。
