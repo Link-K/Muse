@@ -369,19 +369,19 @@ public sealed class InMemoryWorkspaceServiceTests
 	}
 
 	[Fact]
-		public void WorkspaceTabState_SupportsHasUnsavedRecoveryAndIsMissingOnDisk()
+	public void WorkspaceTabState_SupportsHasUnsavedRecoveryAndIsMissingOnDisk()
+	{
+		var tab = new Muse.Workspace.WorkspaceTabState("id", "/path/file.md", false, DateTimeOffset.UtcNow)
 		{
-			var tab = new Muse.Workspace.WorkspaceTabState("id", "/path/file.md", false, DateTimeOffset.UtcNow)
-			{
-				HasUnsavedRecovery = true,
-				IsMissingOnDisk = true
-			};
+			HasUnsavedRecovery = true,
+			IsMissingOnDisk = true
+		};
 
-			Assert.True(tab.HasUnsavedRecovery);
-			Assert.True(tab.IsMissingOnDisk);
-		}
+		Assert.True(tab.HasUnsavedRecovery);
+		Assert.True(tab.IsMissingOnDisk);
+	}
 
-		[Fact]
+	[Fact]
 	public void NewInterfaceMethods_ShouldCompileAndReturnExpectedTypes()
 	{
 		var service = new InMemoryWorkspaceService();
@@ -398,13 +398,23 @@ public sealed class InMemoryWorkspaceServiceTests
 		var moveResult = service.MoveNode("/tmp/test.md", "/tmp/sub");
 		Assert.IsType<WorkspaceMutationResult>(moveResult);
 
+		var closeRemoveResult = service.CloseAndRemove("/tmp/test.md");
+		Assert.IsType<WorkspaceMutationResult>(closeRemoveResult);
+
+		var closeMoveResult = service.CloseAndMove("/tmp/test.md", "/tmp/sub");
+		Assert.IsType<WorkspaceMutationResult>(closeMoveResult);
+
 		var session = service.GetLastSession();
 		Assert.Null(session); // no workspace root set
 
 		service.FlushSession(); // should not throw
 
+		service.InvalidateSession(); // should not throw
+
 		var closed = service.GetRecentlyClosed();
 		Assert.Empty(closed);
+
+		service.RemoveFromRecentlyClosed("/tmp/test.md"); // should not throw
 	}
 
 	private static string CreateWorkspaceFixture()
