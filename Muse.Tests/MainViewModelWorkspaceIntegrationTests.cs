@@ -1001,5 +1001,25 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		{
 			WorkspaceChanged?.Invoke(this, EventArgs.Empty);
 		}
+
+		// S2-009 stubs
+		public WorkspaceMutationResult CreateNode(string parentPath, string name, bool isDirectory)
+			=> new WorkspaceMutationResult(true, "created", null, null);
+		public WorkspaceMutationResult RenameNode(string path, string newName)
+			=> new WorkspaceMutationResult(true, "renamed", null, null);
+		public WorkspaceMutationResult RemoveNode(string path)
+			=> new WorkspaceMutationResult(true, "removed", null, null);
+		public WorkspaceMutationResult MoveNode(string sourcePath, string targetDirectoryPath)
+			=> new WorkspaceMutationResult(true, "moved", null, null);
+		public WorkspaceMutationResult CloseAndRemove(string path)
+			=> new WorkspaceMutationResult(true, "closed_and_removed", null, null);
+		public WorkspaceMutationResult CloseAndMove(string path, string targetDirectoryPath)
+			=> new WorkspaceMutationResult(true, "closed_and_moved", null, null);
+		public WorkspaceSessionState? GetLastSession() => null;
+		public void FlushSession() { }
+		public void InvalidateSession() { }
+		public IReadOnlyList<RecentlyClosedEntry> GetRecentlyClosed()
+			=> Array.Empty<RecentlyClosedEntry>();
+		public void RemoveFromRecentlyClosed(string path) { }
 	}
 }

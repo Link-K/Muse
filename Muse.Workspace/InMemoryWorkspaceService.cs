@@ -736,6 +736,37 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		WorkspaceChanged?.Invoke(this, EventArgs.Empty);
 	}
 
+	// --- S2-009 stubs (real implementation in Task 4) ---
+
+	public WorkspaceMutationResult CreateNode(string parentPath, string name, bool isDirectory)
+		=> WorkspaceMutationResult.Failure("not_implemented", "CreateNode is not yet implemented.");
+
+	public WorkspaceMutationResult RenameNode(string path, string newName)
+		=> WorkspaceMutationResult.Failure("not_implemented", "RenameNode is not yet implemented.");
+
+	public WorkspaceMutationResult RemoveNode(string path)
+		=> WorkspaceMutationResult.Failure("not_implemented", "RemoveNode is not yet implemented.");
+
+	public WorkspaceMutationResult MoveNode(string sourcePath, string targetDirectoryPath)
+		=> WorkspaceMutationResult.Failure("not_implemented", "MoveNode is not yet implemented.");
+
+	public WorkspaceMutationResult CloseAndRemove(string path)
+		=> WorkspaceMutationResult.Failure("not_implemented", "CloseAndRemove is not yet implemented.");
+
+	public WorkspaceMutationResult CloseAndMove(string path, string targetDirectoryPath)
+		=> WorkspaceMutationResult.Failure("not_implemented", "CloseAndMove is not yet implemented.");
+
+	public WorkspaceSessionState? GetLastSession() => null;
+
+	public void FlushSession() { }
+
+	public void InvalidateSession() { }
+
+	public IReadOnlyList<RecentlyClosedEntry> GetRecentlyClosed()
+		=> Array.Empty<RecentlyClosedEntry>();
+
+	public void RemoveFromRecentlyClosed(string path) { }
+
 	private void AppendConflictEvent(string documentId, string action, string message)
 	{
 		_conflictEvents.Add(new ConflictEvent(documentId, action, message, DateTimeOffset.UtcNow));

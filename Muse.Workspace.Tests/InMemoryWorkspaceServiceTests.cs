@@ -381,7 +381,33 @@ public sealed class InMemoryWorkspaceServiceTests
 			Assert.True(tab.IsMissingOnDisk);
 		}
 
-		private static string CreateWorkspaceFixture()
+		[Fact]
+	public void NewInterfaceMethods_ShouldCompileAndReturnExpectedTypes()
+	{
+		var service = new InMemoryWorkspaceService();
+
+		var createResult = service.CreateNode("/tmp", "test.md", false);
+		Assert.IsType<WorkspaceMutationResult>(createResult);
+
+		var renameResult = service.RenameNode("/tmp/test.md", "renamed.md");
+		Assert.IsType<WorkspaceMutationResult>(renameResult);
+
+		var removeResult = service.RemoveNode("/tmp/test.md");
+		Assert.IsType<WorkspaceMutationResult>(removeResult);
+
+		var moveResult = service.MoveNode("/tmp/test.md", "/tmp/sub");
+		Assert.IsType<WorkspaceMutationResult>(moveResult);
+
+		var session = service.GetLastSession();
+		Assert.Null(session); // no workspace root set
+
+		service.FlushSession(); // should not throw
+
+		var closed = service.GetRecentlyClosed();
+		Assert.Empty(closed);
+	}
+
+	private static string CreateWorkspaceFixture()
 	{
 		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(root);
