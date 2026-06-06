@@ -368,7 +368,20 @@ public sealed class InMemoryWorkspaceServiceTests
 		}
 	}
 
-	private static string CreateWorkspaceFixture()
+	[Fact]
+		public void WorkspaceTabState_SupportsHasUnsavedRecoveryAndIsMissingOnDisk()
+		{
+			var tab = new Muse.Workspace.WorkspaceTabState("id", "/path/file.md", false, DateTimeOffset.UtcNow)
+			{
+				HasUnsavedRecovery = true,
+				IsMissingOnDisk = true
+			};
+
+			Assert.True(tab.HasUnsavedRecovery);
+			Assert.True(tab.IsMissingOnDisk);
+		}
+
+		private static string CreateWorkspaceFixture()
 	{
 		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(root);

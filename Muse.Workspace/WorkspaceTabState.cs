@@ -11,4 +11,9 @@ public sealed record WorkspaceTabState(
 	public bool HasExternalConflict { get; init; }
 
 	public string? ConflictMessage { get; init; }
+
+	// S2-009: session-based recovery indicators
+	public bool HasUnsavedRecovery { get; init; }
+
+	public bool IsMissingOnDisk { get; init; }
 }
