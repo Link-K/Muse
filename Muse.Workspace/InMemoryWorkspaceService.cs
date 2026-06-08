@@ -6,6 +6,12 @@ namespace Muse.Workspace;
 public sealed class InMemoryWorkspaceService : IWorkspaceService
 {
 	private const string InternalWorkspaceFolderName = ".muse";
+	private const int MaxRecentlyClosedEntries = 20;
+	private static readonly JsonSerializerOptions JsonOptions = new()
+	{
+		WriteIndented = false,
+		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+	};
 	private readonly IAutoSaveScheduler _autoSaveScheduler;
 	private readonly Dictionary<string, string> _draftContents = new(StringComparer.Ordinal);
 	private readonly List<ConflictEvent> _conflictEvents = [];
@@ -31,35 +37,72 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 		}
 	}
 
-	public WorkspaceState OpenWorkspace(string rootPath)
+public WorkspaceState OpenWorkspace(string rootPath)
 	{
 		DisposeWorkspaceWatcher();
 		var normalizedRoot = NormalizePath(rootPath);
+
+		// 1. Load session (session.json) for normal exit recovery
+		var session = LoadSession(normalizedRoot);
+
+		// 2. Load recovery (recovery/*.json) for crash recovery drafts
 		var recoveryTabs = LoadRecoveryTabs(normalizedRoot);
 
-		// Try to load persisted tab order from settings and apply it to recovery tabs
+		// 3. Load persisted tab order (tabs.json) for ordering
 		var persistedOrder = LoadPersistedTabOrder(normalizedRoot);
+
+		// 4. Build tabs: session-first
+		var tabs = new List<WorkspaceTabState>();
+		if (session is not null)
+		{
+			foreach (var id in session.OpenTabIds)
+			{
+				var normalizedId = NormalizePath(id);
+				var filePath = normalizedId.Replace('/', Path.DirectorySeparatorChar);
+				if (File.Exists(filePath))
+				{
+					var hasRecovery = recoveryTabs.Any(r => r.DocumentId == normalizedId);
+					tabs.Add(new WorkspaceTabState(normalizedId, id, hasRecovery, DateTimeOffset.UtcNow)
+					{
+						HasUnsavedRecovery = hasRecovery
+					});
+				}
+				else
+				{
+					// missing on disk — gray out
+					tabs.Add(new WorkspaceTabState(normalizedId, id, false, DateTimeOffset.UtcNow)
+					{
+						IsMissingOnDisk = true
+					});
+					// add to recently-closed if first discovery
+					AddToRecentlyClosed(normalizedId, Path.GetFileName(normalizedId.Replace('/', Path.DirectorySeparatorChar)), null);
+				}
+			}
+		}
+		else
+		{
+			// No session — use recovery tabs directly (existing behavior)
+			tabs = recoveryTabs.Select(r =>
+				new WorkspaceTabState(r.DocumentId, r.FilePath, true, r.LastTouchedAt) { HasUnsavedRecovery = true }
+			).Cast<WorkspaceTabState>().ToList();
+		}
+
+		// 5. Apply persisted tab order if available
 		if (persistedOrder?.Count > 0)
 		{
-			if (recoveryTabs.Count > 0)
+			if (tabs.Count > 0)
 			{
-				// Reorder recoveryTabs according to persistedOrder, preserving only existing tabs
-				var dict = recoveryTabs.ToDictionary(t => t.DocumentId, t => t, StringComparer.Ordinal);
+				var dict = tabs.ToDictionary(t => t.DocumentId, t => t, StringComparer.Ordinal);
 				var ordered = new List<WorkspaceTabState>();
 				foreach (var id in persistedOrder)
-				{
-					if (dict.TryGetValue(id, out var tab)) ordered.Add(tab);
-				}
-				// append any tabs not present in persisted order
-				foreach (var t in recoveryTabs)
-				{
+					if (dict.TryGetValue(id, out var t)) ordered.Add(t);
+				foreach (var t in tabs)
 					if (!ordered.Any(x => x.DocumentId == t.DocumentId)) ordered.Add(t);
-				}
-				recoveryTabs = ordered;
+				tabs = ordered;
 			}
 			else
 			{
-				// No recovery snapshots found but persisted order exists — construct open tabs from persisted ids
+				// No session or recovery but persisted order exists — construct from persisted ids
 				var constructed = new List<WorkspaceTabState>();
 				foreach (var id in persistedOrder)
 				{
@@ -68,32 +111,20 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 					{
 						var filePath = id.Replace('/', Path.DirectorySeparatorChar);
 						if (File.Exists(filePath))
-						{
 							constructed.Add(new WorkspaceTabState(id, id, false, DateTimeOffset.UtcNow));
-						}
 					}
-					catch
-					{
-						// ignore malformed persisted ids
-					}
+					catch { }
 				}
-
-				// If we constructed any tabs, use them as the recoveryTabs so the workspace opens with persisted tabs
-				if (constructed.Count > 0)
-				{
-					recoveryTabs = constructed;
-				}
+				if (constructed.Count > 0) tabs = constructed;
 			}
 		}
+
+		// 6. Build file tree
 		IReadOnlyList<FileTreeNode> fileTree = Directory.Exists(normalizedRoot)
 			? [BuildTree(normalizedRoot)]
 			: Array.Empty<FileTreeNode>();
 
-		_state = new WorkspaceState(
-			normalizedRoot,
-			fileTree,
-			recoveryTabs,
-			recoveryTabs.Count > 0 ? recoveryTabs[0].DocumentId : null);
+		_state = new WorkspaceState(normalizedRoot, fileTree, tabs, tabs.Count > 0 ? tabs[0].DocumentId : null);
 		SetupWorkspaceWatcher(normalizedRoot);
 		RaiseWorkspaceChanged();
 		return _state;
@@ -735,6 +766,593 @@ public sealed class InMemoryWorkspaceService : IWorkspaceService
 	{
 		WorkspaceChanged?.Invoke(this, EventArgs.Empty);
 	}
+
+	// --- S2-009: File tree CRUD ---
+
+		public WorkspaceMutationResult CreateNode(string parentPath, string name, bool isDirectory)
+		{
+			var validation = ValidateNodeName(name);
+			if (validation is not null) return validation;
+
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return WorkspaceMutationResult.Failure("outside_workspace", "No workspace is open.");
+
+			var normalizedParent = NormalizePath(parentPath);
+			if (!IsUnderWorkspaceRoot(normalizedParent, out var outside) || outside)
+				return WorkspaceMutationResult.Failure("outside_workspace", "Parent path is outside the workspace.");
+
+			if (IsInsideDotMuseFolder(normalizedParent))
+				return WorkspaceMutationResult.Failure("forbidden_path", "Cannot create nodes inside the .muse workspace folder.");
+
+			var targetPath = Path.Combine(normalizedParent.Replace('/', Path.DirectorySeparatorChar), name);
+			var normalizedTarget = NormalizePath(targetPath);
+
+			if (!IsUnderWorkspaceRoot(normalizedTarget, out _))
+				return WorkspaceMutationResult.Failure("outside_workspace", "Target path is outside the workspace.");
+
+			try
+			{
+				if (Directory.Exists(targetPath) || File.Exists(targetPath))
+					return WorkspaceMutationResult.Failure("path_conflict", "A file or directory already exists at the target path.");
+
+				if (isDirectory)
+				{
+					Directory.CreateDirectory(targetPath);
+				}
+				else
+				{
+					var dir = Path.GetDirectoryName(targetPath);
+					if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+						Directory.CreateDirectory(dir);
+					File.WriteAllText(targetPath, string.Empty);
+				}
+
+				RefreshWorkspaceFromDisk();
+				return WorkspaceMutationResult.Success(isDirectory ? "created_directory" : "created", normalizedTarget);
+			}
+			catch (Exception ex)
+			{
+				return WorkspaceMutationResult.Failure("io_error", $"Failed to create node: {ex.Message}");
+			}
+		}
+
+		public WorkspaceMutationResult RenameNode(string path, string newName)
+		{
+			var validation = ValidateNodeName(newName);
+			if (validation is not null) return validation;
+
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return WorkspaceMutationResult.Failure("outside_workspace", "No workspace is open.");
+
+			var normalizedPath = NormalizePath(path);
+			if (!IsUnderWorkspaceRoot(normalizedPath, out var outside) || outside)
+				return WorkspaceMutationResult.Failure("outside_workspace", "Source path is outside the workspace.");
+
+			var sourceDir = Path.GetDirectoryName(normalizedPath.Replace('/', Path.DirectorySeparatorChar)) ?? string.Empty;
+			var targetPath = Path.Combine(sourceDir, newName);
+			var normalizedTarget = NormalizePath(targetPath);
+
+			if (!IsUnderWorkspaceRoot(normalizedTarget, out _))
+				return WorkspaceMutationResult.Failure("outside_workspace", "Target path is outside the workspace.");
+
+			try
+			{
+				if (Directory.Exists(targetPath) || File.Exists(targetPath))
+					return WorkspaceMutationResult.Failure("path_conflict", "A file or directory already exists with the new name.");
+
+				if (Directory.Exists(normalizedPath.Replace('/', Path.DirectorySeparatorChar)))
+				{
+					Directory.Move(normalizedPath.Replace('/', Path.DirectorySeparatorChar), targetPath);
+				}
+				else if (File.Exists(normalizedPath.Replace('/', Path.DirectorySeparatorChar)))
+				{
+					File.Move(normalizedPath.Replace('/', Path.DirectorySeparatorChar), targetPath);
+				}
+				else
+				{
+					return WorkspaceMutationResult.Failure("not_found", "Source path does not exist.");
+				}
+
+				UpdateTabPaths(normalizedPath, normalizedTarget);
+				UpdateDraftKeys(normalizedPath, normalizedTarget);
+				UpdateRecoverySnapshots(normalizedPath, normalizedTarget);
+
+				RefreshWorkspaceFromDisk();
+				return WorkspaceMutationResult.Success("renamed", normalizedTarget);
+			}
+			catch (Exception ex)
+			{
+				return WorkspaceMutationResult.Failure("io_error", $"Failed to rename node: {ex.Message}");
+			}
+		}
+
+		public WorkspaceMutationResult RemoveNode(string path)
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return WorkspaceMutationResult.Failure("outside_workspace", "No workspace is open.");
+
+			var normalizedPath = NormalizePath(path);
+			if (!IsUnderWorkspaceRoot(normalizedPath, out var outside) || outside)
+				return WorkspaceMutationResult.Failure("outside_workspace", "Path is outside the workspace.");
+
+			var fileSystemPath = normalizedPath.Replace('/', Path.DirectorySeparatorChar);
+
+			foreach (var tab in _state.OpenTabs)
+			{
+				if (tab.FilePath.StartsWith(normalizedPath, StringComparison.Ordinal))
+				{
+					if (tab.IsDirty)
+						return WorkspaceMutationResult.Failure("open_tab_unsaved", "The file or directory is open in a tab with unsaved changes.");
+					return WorkspaceMutationResult.Failure("open_tab_unsaved", "The file or directory is currently open. Use CloseAndRemove to close it first.");
+				}
+			}
+
+			try
+			{
+				if (!Directory.Exists(fileSystemPath) && !File.Exists(fileSystemPath))
+					return WorkspaceMutationResult.Failure("not_found", "Path does not exist.");
+
+				var fileName = Path.GetFileName(fileSystemPath);
+				long? sizeBytes = null;
+				if (File.Exists(fileSystemPath))
+				{
+					try { sizeBytes = new FileInfo(fileSystemPath).Length; } catch { }
+				}
+
+				AddToRecentlyClosed(normalizedPath, fileName, sizeBytes);
+
+				if (Directory.Exists(fileSystemPath))
+				{
+					foreach (var tab in _state.OpenTabs)
+					{
+						if (tab.FilePath.StartsWith(normalizedPath, StringComparison.Ordinal))
+						{
+							RemoveRecoverySnapshot(tab.DocumentId);
+							_draftContents.Remove(tab.DocumentId);
+						}
+					}
+					Directory.Delete(fileSystemPath, true);
+				}
+				else
+				{
+					RemoveRecoverySnapshot(normalizedPath);
+					_draftContents.Remove(normalizedPath);
+					File.Delete(fileSystemPath);
+				}
+
+				RefreshWorkspaceFromDisk();
+				return WorkspaceMutationResult.Success("removed", normalizedPath);
+			}
+			catch (Exception ex)
+			{
+				return WorkspaceMutationResult.Failure("io_error", $"Failed to remove node: {ex.Message}");
+			}
+		}
+
+		public WorkspaceMutationResult MoveNode(string sourcePath, string targetDirectoryPath)
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return WorkspaceMutationResult.Failure("outside_workspace", "No workspace is open.");
+
+			var normalizedSource = NormalizePath(sourcePath);
+			var normalizedTargetDir = NormalizePath(targetDirectoryPath);
+
+			if (!IsUnderWorkspaceRoot(normalizedSource, out var srcOutside) || srcOutside)
+				return WorkspaceMutationResult.Failure("outside_workspace", "Source path is outside the workspace.");
+			if (!IsUnderWorkspaceRoot(normalizedTargetDir, out var tgtOutside) || tgtOutside)
+				return WorkspaceMutationResult.Failure("outside_workspace", "Target directory is outside the workspace.");
+
+			if (IsInsideDotMuseFolder(normalizedTargetDir))
+				return WorkspaceMutationResult.Failure("forbidden_path", "Cannot move nodes into the .muse workspace folder.");
+
+			var srcFsPath = normalizedSource.Replace('/', Path.DirectorySeparatorChar);
+			var tgtDirFsPath = normalizedTargetDir.Replace('/', Path.DirectorySeparatorChar);
+
+			if (normalizedTargetDir.StartsWith(normalizedSource + "/", StringComparison.Ordinal) || normalizedTargetDir == normalizedSource)
+				return WorkspaceMutationResult.Failure("path_conflict", "Cannot move a directory into itself.");
+
+			var sourceName = Path.GetFileName(srcFsPath);
+			var destPath = Path.Combine(tgtDirFsPath, sourceName);
+			var normalizedDest = NormalizePath(destPath);
+
+			if (!IsUnderWorkspaceRoot(normalizedDest, out _))
+				return WorkspaceMutationResult.Failure("outside_workspace", "Destination path is outside the workspace.");
+
+			foreach (var tab in _state.OpenTabs)
+			{
+				if (tab.FilePath.StartsWith(normalizedSource, StringComparison.Ordinal))
+				{
+					if (tab.IsDirty)
+						return WorkspaceMutationResult.Failure("open_tab_unsaved", "The file or directory is open in a tab with unsaved changes.");
+					return WorkspaceMutationResult.Failure("open_tab_unsaved", "The file or directory is currently open. Use CloseAndMove to move it first.");
+				}
+			}
+
+			try
+			{
+				if (!Directory.Exists(srcFsPath) && !File.Exists(srcFsPath))
+					return WorkspaceMutationResult.Failure("not_found", "Source path does not exist.");
+
+				if (Directory.Exists(destPath) || File.Exists(destPath))
+					return WorkspaceMutationResult.Failure("path_conflict", "A file or directory already exists at the destination.");
+
+				if (!Directory.Exists(tgtDirFsPath))
+					Directory.CreateDirectory(tgtDirFsPath);
+
+				if (Directory.Exists(srcFsPath))
+				{
+					Directory.Move(srcFsPath, destPath);
+				}
+				else
+				{
+					File.Move(srcFsPath, destPath);
+				}
+
+				UpdateTabPaths(normalizedSource, normalizedDest);
+				UpdateDraftKeys(normalizedSource, normalizedDest);
+				UpdateRecoverySnapshots(normalizedSource, normalizedDest);
+
+				RefreshWorkspaceFromDisk();
+				return WorkspaceMutationResult.Success("moved", normalizedDest);
+			}
+			catch (Exception ex)
+			{
+				return WorkspaceMutationResult.Failure("io_error", $"Failed to move node: {ex.Message}");
+			}
+		}
+
+		// --- S2-009: Atomic soft-flow operations ---
+
+		public WorkspaceMutationResult CloseAndRemove(string path)
+		{
+			var normalizedPath = NormalizePath(path);
+			var fileSystemPath = normalizedPath.Replace('/', Path.DirectorySeparatorChar);
+
+			try
+			{
+				var tab = _state.OpenTabs.FirstOrDefault(t => t.FilePath == normalizedPath);
+				if (tab is not null)
+				{
+					if (tab.IsDirty)
+					{
+						var draftContent = GetDraftContent(tab.DocumentId);
+						if (draftContent is not null)
+						{
+							try { File.WriteAllText(fileSystemPath, draftContent); }
+							catch { }
+						}
+					}
+					CloseDocument(tab.DocumentId);
+				}
+
+				if (File.Exists(fileSystemPath))
+				{
+					AddToRecentlyClosed(normalizedPath, Path.GetFileName(fileSystemPath), null);
+					File.Delete(fileSystemPath);
+				}
+				else if (Directory.Exists(fileSystemPath))
+				{
+					Directory.Delete(fileSystemPath, true);
+				}
+
+				RemoveRecoverySnapshot(normalizedPath);
+				_draftContents.Remove(normalizedPath);
+				RefreshWorkspaceFromDisk();
+				return WorkspaceMutationResult.Success("closed_and_removed", normalizedPath);
+			}
+			catch (Exception ex)
+			{
+				return WorkspaceMutationResult.Failure("io_error", $"Failed to close and remove: {ex.Message}");
+			}
+		}
+
+		public WorkspaceMutationResult CloseAndMove(string path, string targetDirectoryPath)
+		{
+			var normalizedPath = NormalizePath(path);
+			var normalizedTargetDir = NormalizePath(targetDirectoryPath);
+			var srcFsPath = normalizedPath.Replace('/', Path.DirectorySeparatorChar);
+			var tgtDirFsPath = normalizedTargetDir.Replace('/', Path.DirectorySeparatorChar);
+
+			if (!IsUnderWorkspaceRoot(normalizedTargetDir, out _))
+				return WorkspaceMutationResult.Failure("outside_workspace", "Target directory is outside the workspace.");
+
+			var sourceName = Path.GetFileName(srcFsPath);
+			var destPath = Path.Combine(tgtDirFsPath, sourceName);
+			var normalizedDest = NormalizePath(destPath);
+
+			try
+			{
+				if (Directory.Exists(destPath) || File.Exists(destPath))
+					return WorkspaceMutationResult.Failure("path_conflict", "A file or directory already exists at the destination.");
+
+				var tab = _state.OpenTabs.FirstOrDefault(t => t.FilePath == normalizedPath);
+				if (tab is not null)
+				{
+					if (tab.IsDirty)
+					{
+						var draftContent = GetDraftContent(tab.DocumentId);
+						if (draftContent is not null)
+						{
+							try { File.WriteAllText(srcFsPath, draftContent); }
+							catch { }
+						}
+					}
+					CloseDocument(tab.DocumentId);
+				}
+
+				if (!Directory.Exists(tgtDirFsPath))
+					Directory.CreateDirectory(tgtDirFsPath);
+
+				if (Directory.Exists(srcFsPath))
+				{
+					Directory.Move(srcFsPath, destPath);
+				}
+				else if (File.Exists(srcFsPath))
+				{
+					File.Move(srcFsPath, destPath);
+				}
+
+				RemoveRecoverySnapshot(normalizedPath);
+				_draftContents.Remove(normalizedPath);
+				RefreshWorkspaceFromDisk();
+				return WorkspaceMutationResult.Success("closed_and_moved", normalizedDest);
+			}
+			catch (Exception ex)
+			{
+				return WorkspaceMutationResult.Failure("io_error", $"Failed to close and move: {ex.Message}");
+			}
+		}
+
+		// --- S2-009: Session persistence ---
+
+		public WorkspaceSessionState? GetLastSession()
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return null;
+
+			var path = GetSessionPath(_state.WorkspaceRoot);
+			try
+			{
+				if (!File.Exists(path))
+					return null;
+				var json = File.ReadAllText(path);
+				return JsonSerializer.Deserialize<WorkspaceSessionState>(json);
+			}
+			catch
+			{
+				return null;
+			}
+		}
+
+		public void FlushSession()
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return;
+
+			var normalizedRoot = NormalizePath(_state.WorkspaceRoot);
+			var ids = _state.OpenTabs.Select(t => t.DocumentId).ToArray();
+			var session = new WorkspaceSessionState(normalizedRoot, ids, DateTimeOffset.UtcNow);
+			WriteSession(normalizedRoot, session);
+		}
+
+		public void InvalidateSession()
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return;
+
+			var path = GetSessionPath(_state.WorkspaceRoot);
+			try
+			{
+				if (File.Exists(path))
+					File.Delete(path);
+			}
+			catch
+			{
+			}
+		}
+
+		// --- S2-009: Recently closed ---
+
+		public IReadOnlyList<RecentlyClosedEntry> GetRecentlyClosed()
+		{
+			return LoadRecentlyClosedFromDisk();
+		}
+
+		public void RemoveFromRecentlyClosed(string path)
+		{
+			var normalizedPath = NormalizePath(path);
+			var entries = LoadRecentlyClosedFromDisk().ToList();
+			var removed = entries.RemoveAll(e => e.FilePath == normalizedPath);
+			if (removed > 0)
+				SaveRecentlyClosedToDisk(entries);
+		}
+
+		// --- S2-009: Helper methods ---
+
+		private static WorkspaceMutationResult? ValidateNodeName(string name)
+		{
+			if (string.IsNullOrWhiteSpace(name))
+				return WorkspaceMutationResult.Failure("invalid_name", "Name cannot be empty or whitespace.");
+
+			if (name.StartsWith('.'))
+				return WorkspaceMutationResult.Failure("invalid_name", "Name cannot start with a dot.");
+
+			var invalidChars = Path.GetInvalidFileNameChars();
+			if (name.Any(c => invalidChars.Contains(c)))
+				return WorkspaceMutationResult.Failure("invalid_name", "Name contains invalid characters.");
+
+			return null;
+		}
+
+		private bool IsUnderWorkspaceRoot(string normalizedPath, out bool outside)
+		{
+			outside = false;
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return false;
+
+			var root = NormalizePath(_state.WorkspaceRoot);
+			var rootWithSlash = root + "/";
+			if (normalizedPath == root || normalizedPath.StartsWith(rootWithSlash, StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+			outside = true;
+			return false;
+		}
+
+		private static bool IsInsideDotMuseFolder(string normalizedPath)
+		{
+			return normalizedPath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries)
+				.Any(segment => string.Equals(segment, InternalWorkspaceFolderName, StringComparison.OrdinalIgnoreCase));
+		}
+
+		private void UpdateTabPaths(string oldPath, string newPath)
+		{
+			var updated = new List<WorkspaceTabState>();
+			foreach (var tab in _state.OpenTabs)
+			{
+				if (tab.FilePath.StartsWith(oldPath, StringComparison.Ordinal))
+				{
+					var relativePart = tab.FilePath[oldPath.Length..];
+					var newFilePath = newPath + relativePart;
+					var newDocumentId = tab.DocumentId.StartsWith(oldPath, StringComparison.Ordinal)
+						? newPath + tab.DocumentId[oldPath.Length..]
+						: tab.DocumentId;
+					updated.Add(new WorkspaceTabState(newDocumentId, newFilePath, tab.IsDirty, tab.LastTouchedAt)
+					{
+						HasExternalConflict = tab.HasExternalConflict,
+						ConflictMessage = tab.ConflictMessage,
+						HasUnsavedRecovery = tab.HasUnsavedRecovery,
+						IsMissingOnDisk = tab.IsMissingOnDisk
+					});
+				}
+				else
+				{
+					updated.Add(tab);
+				}
+			}
+			_state = _state with { OpenTabs = updated };
+		}
+
+		private void UpdateDraftKeys(string oldPath, string newPath)
+		{
+			var keysToUpdate = _draftContents.Keys
+				.Where(k => k.StartsWith(oldPath, StringComparison.Ordinal))
+				.ToList();
+
+			foreach (var key in keysToUpdate)
+			{
+				var relativePart = key[oldPath.Length..];
+				var newKey = newPath + relativePart;
+				_draftContents[newKey] = _draftContents[key];
+				_draftContents.Remove(key);
+			}
+		}
+
+		private void UpdateRecoverySnapshots(string oldPath, string newPath)
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return;
+
+			var recoveryDir = GetRecoveryDirectory(_state.WorkspaceRoot);
+			if (!Directory.Exists(recoveryDir))
+				return;
+
+			foreach (var tab in _state.OpenTabs)
+			{
+				if (tab.FilePath.StartsWith(newPath, StringComparison.Ordinal))
+				{
+					var oldDocId = oldPath + tab.DocumentId[newPath.Length..];
+					RemoveRecoverySnapshot(oldDocId);
+
+					var content = GetDraftContent(tab.DocumentId);
+					if (content is not null)
+					{
+						var snapshot = new WorkspaceRecoverySnapshot(tab.DocumentId, tab.FilePath, content, DateTimeOffset.UtcNow);
+						var snapshotPath = GetRecoverySnapshotPath(recoveryDir, tab.DocumentId);
+						Directory.CreateDirectory(Path.GetDirectoryName(snapshotPath)!);
+						File.WriteAllText(snapshotPath, JsonSerializer.Serialize(snapshot));
+					}
+				}
+			}
+		}
+
+		private void AddToRecentlyClosed(string normalizedPath, string fileName, long? sizeBytes)
+		{
+			var entries = LoadRecentlyClosedFromDisk().ToList();
+			var entry = new RecentlyClosedEntry(normalizedPath, fileName, DateTimeOffset.UtcNow, sizeBytes);
+			entries.Insert(0, entry);
+
+			if (entries.Count > 20)
+				entries = entries.Take(20).ToList();
+
+			SaveRecentlyClosedToDisk(entries);
+		}
+
+		private void WriteSession(string normalizedRoot, WorkspaceSessionState session)
+		{
+			var settingsDir = GetSettingsDirectory(normalizedRoot);
+			Directory.CreateDirectory(settingsDir);
+			var path = GetSessionPath(normalizedRoot);
+			var tmpPath = path + ".tmp";
+			File.WriteAllText(tmpPath, JsonSerializer.Serialize(session));
+			File.Move(tmpPath, path, overwrite: true);
+		}
+
+		private static string GetSessionPath(string normalizedRoot)
+		{
+			return Path.Combine(GetSettingsDirectory(normalizedRoot), "session.json");
+		}
+
+		private static WorkspaceSessionState? LoadSession(string normalizedRoot)
+		{
+			try
+			{
+				var path = GetSessionPath(normalizedRoot);
+				if (!File.Exists(path)) return null;
+				var json = File.ReadAllText(path);
+				return JsonSerializer.Deserialize<WorkspaceSessionState>(json);
+			}
+			catch
+			{
+				return null;
+			}
+		}
+
+		private static string GetRecentlyClosedPath(string normalizedRoot)
+		{
+			return Path.Combine(GetSettingsDirectory(normalizedRoot), "recently-closed.json");
+		}
+
+		private IReadOnlyList<RecentlyClosedEntry> LoadRecentlyClosedFromDisk()
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return Array.Empty<RecentlyClosedEntry>();
+
+			var path = GetRecentlyClosedPath(_state.WorkspaceRoot);
+			try
+			{
+				if (!File.Exists(path))
+					return Array.Empty<RecentlyClosedEntry>();
+				var json = File.ReadAllText(path);
+				return JsonSerializer.Deserialize<List<RecentlyClosedEntry>>(json) ?? new List<RecentlyClosedEntry>();
+			}
+			catch
+			{
+				return Array.Empty<RecentlyClosedEntry>();
+			}
+		}
+
+		private void SaveRecentlyClosedToDisk(List<RecentlyClosedEntry> entries)
+		{
+			if (string.IsNullOrWhiteSpace(_state.WorkspaceRoot))
+				return;
+
+			var path = GetRecentlyClosedPath(_state.WorkspaceRoot);
+			var settingsDir = Path.GetDirectoryName(path)!;
+			Directory.CreateDirectory(settingsDir);
+			File.WriteAllText(path, JsonSerializer.Serialize(entries));
+		}
 
 	private void AppendConflictEvent(string documentId, string action, string message)
 	{
