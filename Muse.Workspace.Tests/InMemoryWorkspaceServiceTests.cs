@@ -40,11 +40,9 @@ public sealed class InMemoryWorkspaceServiceTests
 			var tabBRes = service.OpenDocument(Path.Combine(root, "notes.md"));
 			var tabB = tabBRes.Tab!;
 
-			// move tabB to index 0 and persist
 			var moved = service.MoveTab(tabB.DocumentId, 0);
 			Assert.True(moved);
 
-			// create a fresh service and reopen workspace to verify restoration
 			var reloaded = new InMemoryWorkspaceService();
 			var state = reloaded.OpenWorkspace(root);
 
@@ -71,7 +69,6 @@ public sealed class InMemoryWorkspaceServiceTests
 			var tabBRes = service.OpenDocument(Path.Combine(root, "notes.md"));
 			var tabB = tabBRes.Tab!;
 
-			// move tabB to index 0
 			var moved = service.MoveTab(tabB.DocumentId, 0);
 			var state = service.GetState();
 
@@ -371,7 +368,7 @@ public sealed class InMemoryWorkspaceServiceTests
 	[Fact]
 	public void WorkspaceTabState_SupportsHasUnsavedRecoveryAndIsMissingOnDisk()
 	{
-		var tab = new Muse.Workspace.WorkspaceTabState("id", "/path/file.md", false, DateTimeOffset.UtcNow)
+		var tab = new WorkspaceTabState("id", "/path/file.md", false, DateTimeOffset.UtcNow)
 		{
 			HasUnsavedRecovery = true,
 			IsMissingOnDisk = true
@@ -382,50 +379,408 @@ public sealed class InMemoryWorkspaceServiceTests
 	}
 
 	[Fact]
-	public void NewInterfaceMethods_ShouldCompileAndReturnExpectedTypes()
+	public void NewInterfaceMethods_ShouldReturnExpectedResults()
 	{
 		var service = new InMemoryWorkspaceService();
 
 		var createResult = service.CreateNode("/tmp", "test.md", false);
-		Assert.IsType<WorkspaceMutationResult>(createResult);
+		Assert.Equal("outside_workspace", createResult.Code);
 
 		var renameResult = service.RenameNode("/tmp/test.md", "renamed.md");
-		Assert.IsType<WorkspaceMutationResult>(renameResult);
+		Assert.Equal("outside_workspace", renameResult.Code);
 
 		var removeResult = service.RemoveNode("/tmp/test.md");
-		Assert.IsType<WorkspaceMutationResult>(removeResult);
+		Assert.Equal("outside_workspace", removeResult.Code);
 
 		var moveResult = service.MoveNode("/tmp/test.md", "/tmp/sub");
-		Assert.IsType<WorkspaceMutationResult>(moveResult);
+		Assert.Equal("outside_workspace", moveResult.Code);
 
 		var closeRemoveResult = service.CloseAndRemove("/tmp/test.md");
-		Assert.IsType<WorkspaceMutationResult>(closeRemoveResult);
+		Assert.True(closeRemoveResult.Succeeded);
 
 		var closeMoveResult = service.CloseAndMove("/tmp/test.md", "/tmp/sub");
-		Assert.IsType<WorkspaceMutationResult>(closeMoveResult);
+		Assert.Equal("outside_workspace", closeMoveResult.Code);
 
 		var session = service.GetLastSession();
-		Assert.Null(session); // no workspace root set
+		Assert.Null(session);
 
-		service.FlushSession(); // should not throw
-
-		service.InvalidateSession(); // should not throw
+		service.FlushSession();
+		service.InvalidateSession();
 
 		var closed = service.GetRecentlyClosed();
 		Assert.Empty(closed);
 
-		service.RemoveFromRecentlyClosed("/tmp/test.md"); // should not throw
+		service.RemoveFromRecentlyClosed("/tmp/test.md");
 	}
 
-	private static string CreateWorkspaceFixture()
+	[Fact]
+	public void CreateNode_ShouldCreateFileAndRefreshTree()
 	{
-		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));
-		Directory.CreateDirectory(root);
-		Directory.CreateDirectory(Path.Combine(root, "docs"));
-		File.WriteAllText(Path.Combine(root, "README.md"), "# Readme");
-		File.WriteAllText(Path.Combine(root, "notes.md"), "notes");
-		File.WriteAllText(Path.Combine(root, "docs", "guide.md"), "guide");
-		return root;
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.CreateNode(root, "newfile.md", false);
+
+			Assert.True(result.Succeeded, result.Message);
+			Assert.Equal("created", result.Code);
+			Assert.NotNull(result.AffectedPath);
+			Assert.True(File.Exists(Path.Combine(root, "newfile.md")));
+			var tree = service.GetState().FileTree;
+			Assert.Contains(tree[0].Children, n => n.Name == "newfile.md");
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void CreateNode_ShouldCreateDirectoryAndRefreshTree()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.CreateNode(root, "subdir", true);
+
+			Assert.True(result.Succeeded, result.Message);
+			Assert.Equal("created_directory", result.Code);
+			Assert.True(Directory.Exists(Path.Combine(root, "subdir")));
+			var tree = service.GetState().FileTree;
+			Assert.Contains(tree[0].Children, n => n.IsDirectory && n.Name == "subdir");
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void CreateNode_InvalidName_ShouldReturnInvalidName()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.CreateNode(root, ".hidden", false);
+			Assert.False(result.Succeeded);
+			Assert.Equal("invalid_name", result.Code);
+
+			result = service.CreateNode(root, "", false);
+			Assert.False(result.Succeeded);
+			Assert.Equal("invalid_name", result.Code);
+
+			result = service.CreateNode(root, "bad<char>", false);
+			Assert.False(result.Succeeded);
+			Assert.Equal("invalid_name", result.Code);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void CreateNode_PathConflict_ShouldReturnPathConflict()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.CreateNode(root, "README.md", false);
+			Assert.False(result.Succeeded);
+			Assert.Equal("path_conflict", result.Code);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void CreateNode_OutsideWorkspace_ShouldReturnOutsideWorkspace()
+	{
+		var service = new InMemoryWorkspaceService();
+		var outside = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+		try
+		{
+			var result = service.CreateNode(outside, "test.md", false);
+			Assert.False(result.Succeeded);
+			Assert.Equal("outside_workspace", result.Code);
+		}
+		finally
+		{
+			if (Directory.Exists(outside)) Directory.Delete(outside, true);
+		}
+	}
+
+	[Fact]
+	public void RenameNode_ShouldRenameFileAndUpdateTabPath()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabRes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tab = tabRes.Tab!;
+
+			var result = service.RenameNode(Path.Combine(root, "README.md"), "NEWREADME.md");
+
+			Assert.True(result.Succeeded, result.Message);
+			Assert.Equal("renamed", result.Code);
+			Assert.True(File.Exists(Path.Combine(root, "NEWREADME.md")));
+			Assert.False(File.Exists(Path.Combine(root, "README.md")));
+			var state = service.GetState();
+			var updatedTab = state.OpenTabs.FirstOrDefault(t => t.FilePath.Contains("NEWREADME"));
+			Assert.NotNull(updatedTab);
+			Assert.Contains("NEWREADME", updatedTab.FilePath);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void RenameNode_PathConflict_ShouldReturnPathConflict()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.RenameNode(Path.Combine(root, "README.md"), "notes.md");
+			Assert.False(result.Succeeded);
+			Assert.Equal("path_conflict", result.Code);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void RemoveNode_ShouldDeleteFileAndAddToRecentlyClosed()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.RemoveNode(Path.Combine(root, "notes.md"));
+
+			Assert.True(result.Succeeded, result.Message);
+			Assert.Equal("removed", result.Code);
+			Assert.False(File.Exists(Path.Combine(root, "notes.md")));
+
+			var closed = service.GetRecentlyClosed();
+			Assert.Contains(closed, e => e.FileName == "notes.md");
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void RemoveNode_DirtyTab_ShouldReturnOpenTabUnsaved()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabRes = service.OpenDocument(Path.Combine(root, "notes.md"));
+			var tab = tabRes.Tab!;
+			service.MarkDirty(tab.DocumentId, true);
+
+			var result = service.RemoveNode(Path.Combine(root, "notes.md"));
+
+			Assert.False(result.Succeeded);
+			Assert.Equal("open_tab_unsaved", result.Code);
+			Assert.True(File.Exists(Path.Combine(root, "notes.md")));
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void CloseAndRemove_ShouldCloseTabAndDeleteFile()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			service.OpenDocument(Path.Combine(root, "README.md"));
+
+			var result = service.CloseAndRemove(Path.Combine(root, "README.md"));
+
+			Assert.True(result.Succeeded, result.Message);
+			Assert.Equal("closed_and_removed", result.Code);
+			Assert.False(File.Exists(Path.Combine(root, "README.md")));
+			Assert.Empty(service.GetState().OpenTabs);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void MoveNode_ShouldMoveFile()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.MoveNode(Path.Combine(root, "docs", "guide.md"), root);
+
+			Assert.True(result.Succeeded, result.Message);
+			Assert.Equal("moved", result.Code);
+			Assert.True(File.Exists(Path.Combine(root, "guide.md")));
+			Assert.False(File.Exists(Path.Combine(root, "docs", "guide.md")));
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void MoveNode_WithOpenTab_ShouldReturnOpenTabUnsaved()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabRes = service.OpenDocument(Path.Combine(root, "docs", "guide.md"));
+			var tab = tabRes.Tab!;
+
+			var result = service.MoveNode(Path.Combine(root, "docs", "guide.md"), root);
+			Assert.False(result.Succeeded);
+			Assert.Equal("open_tab_unsaved", result.Code);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void CloseAndMove_ShouldMoveAndCloseTab()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			service.OpenDocument(Path.Combine(root, "notes.md"));
+
+			var subDir = Path.Combine(root, "subdir");
+			Directory.CreateDirectory(subDir);
+
+			var result = service.CloseAndMove(Path.Combine(root, "notes.md"), subDir);
+
+			Assert.True(result.Succeeded, result.Message);
+			Assert.Equal("closed_and_moved", result.Code);
+			Assert.True(File.Exists(Path.Combine(subDir, "notes.md")));
+			Assert.Empty(service.GetState().OpenTabs);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void FlushSession_ThenGetLastSession_ShouldReturnTabIds()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var tabARes = service.OpenDocument(Path.Combine(root, "README.md"));
+			var tabA = tabARes.Tab!;
+			var tabBRes = service.OpenDocument(Path.Combine(root, "notes.md"));
+			var tabB = tabBRes.Tab!;
+
+			service.FlushSession();
+
+			var session = service.GetLastSession();
+			Assert.NotNull(session);
+			Assert.Equal(2, session.OpenTabIds.Count);
+			Assert.Contains(session.OpenTabIds, id => id == tabA.DocumentId);
+			Assert.Contains(session.OpenTabIds, id => id == tabB.DocumentId);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void RecentlyClosed_LRULimit()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			for (int i = 0; i < 21; i++)
+			{
+				var filePath = Path.Combine(root, $"file{i}.md");
+				File.WriteAllText(filePath, $"content{i}");
+				var removeResult = service.RemoveNode(filePath);
+				Assert.True(removeResult.Succeeded, $"RemoveNode failed for file{i}: {removeResult.Message}");
+			}
+
+			var closed = service.GetRecentlyClosed();
+			Assert.Equal(20, closed.Count);
+			Assert.Contains("file20.md", closed[0].FileName);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
+	public void CreateNode_ForbiddenPathInsideDotMuse()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+
+			var result = service.CreateNode(Path.Combine(root, ".muse", "settings"), "test.md", false);
+			Assert.False(result.Succeeded);
+			Assert.Equal("forbidden_path", result.Code);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
 	}
 
 	[Fact]
@@ -437,7 +792,6 @@ public sealed class InMemoryWorkspaceServiceTests
 			var service = new InMemoryWorkspaceService();
 			service.OpenWorkspace(root);
 			var binPath = Path.Combine(root, "image.bin");
-			// write a small binary with a NUL byte
 			File.WriteAllBytes(binPath, new byte[] { 0x00, 0x01, 0x02, 0x03 });
 
 			var res = service.OpenDocument(binPath);
@@ -451,5 +805,16 @@ public sealed class InMemoryWorkspaceServiceTests
 		{
 			Directory.Delete(root, true);
 		}
+	}
+
+	private static string CreateWorkspaceFixture()
+	{
+		var root = Path.Combine(Path.GetTempPath(), "muse-workspace-tests", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(root);
+		Directory.CreateDirectory(Path.Combine(root, "docs"));
+		File.WriteAllText(Path.Combine(root, "README.md"), "# Readme");
+		File.WriteAllText(Path.Combine(root, "notes.md"), "notes");
+		File.WriteAllText(Path.Combine(root, "docs", "guide.md"), "guide");
+		return root;
 	}
 }
