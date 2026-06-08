@@ -58,6 +58,19 @@ public sealed class AppServiceResolutionTests : IDisposable
 	}
 
 	[Fact]
+	public void Resolve_WhenWorkspaceServiceIsRegistered_ShouldReturnSharedInstance()
+	{
+		var services = new ServiceCollection();
+		services.AddSingleton<Muse.Workspace.IWorkspaceService, Muse.Workspace.InMemoryWorkspaceService>();
+		SetServiceProvider(services.BuildServiceProvider());
+
+		var first = App.Resolve<Muse.Workspace.IWorkspaceService>();
+		var second = App.Resolve<Muse.Workspace.IWorkspaceService>();
+
+		Assert.Same(first, second);
+	}
+
+	[Fact]
 	public async Task MainView_CopyErrorDetails_WhenContainerUnavailable_ShouldFallBackToDefaultWriter()
 	{
 		SetServiceProvider(null);

@@ -198,9 +198,24 @@ public WorkspaceState OpenWorkspace(string rootPath)
 		var tabs = _state.OpenTabs.ToList();
 		var index = tabs.FindIndex(t => t.DocumentId == normalizedId);
 		if (index < 0) return false;
+		var closedTab = tabs[index];
 		tabs.RemoveAt(index);
 		string? newActive = tabs.Count > 0 ? tabs[Math.Max(0, index - 1)].DocumentId : null;
 		_state = _state with { OpenTabs = tabs, ActiveDocumentId = newActive };
+		long? sizeBytes = null;
+		try
+		{
+			var filePath = closedTab.FilePath.Replace('/', Path.DirectorySeparatorChar);
+			if (File.Exists(filePath))
+			{
+				sizeBytes = new FileInfo(filePath).Length;
+			}
+		}
+		catch
+		{
+			// ignore size lookup failures
+		}
+		AddToRecentlyClosed(normalizedId, closedTab.FileName, sizeBytes);
 		RaiseWorkspaceChanged();
 		return true;
 	}

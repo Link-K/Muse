@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Avalonia.Platform.Storage;
 using Muse.ViewModels;
 using Muse.Services;
@@ -208,6 +209,98 @@ public partial class MainView : UserControl
 		{
 			node.ToggleExpandedCommand.Execute(null);
 		}
+	}
+
+	private Point? _fileTreeDragStart;
+	private FileTreeNodeViewModel? _fileTreeDragNode;
+	private const double FileTreeDragThreshold = 6;
+
+	private void OnFileTreeNodePointerPressed(object? sender, PointerPressedEventArgs e)
+	{
+		if (sender is not Control c) return;
+		if (c.DataContext is not FileTreeNodeViewModel node) return;
+		if (node.IsDirectory) return;
+		if (!e.GetCurrentPoint(c).Properties.IsLeftButtonPressed) return;
+		_fileTreeDragNode = node;
+		_fileTreeDragStart = e.GetPosition(c);
+		e.Pointer.Capture(c);
+	}
+
+	private async void OnFileTreeNodePointerMoved(object? sender, PointerEventArgs e)
+	{
+		if (_fileTreeDragNode is null || _fileTreeDragStart is null) return;
+		if (sender is not Control c) return;
+		var pos = e.GetPosition(c);
+		var delta = pos - _fileTreeDragStart.Value;
+		if (Math.Abs(delta.X) < FileTreeDragThreshold && Math.Abs(delta.Y) < FileTreeDragThreshold) return;
+
+		var node = _fileTreeDragNode;
+		ResetFileTreeDragState();
+		e.Pointer.Capture(null);
+
+		try
+		{
+			var dragData = new DataTransfer();
+			dragData.Add(DataTransferItem.CreateText(node.Path));
+			await DragDrop.DoDragDropAsync(e, dragData, DragDropEffects.Copy);
+		}
+		catch
+		{
+			// ignore drag initiation failures
+		}
+	}
+
+	private void OnFileTreeNodePointerReleased(object? sender, PointerReleasedEventArgs e)
+	{
+		ResetFileTreeDragState();
+		if (sender is Control c)
+			e.Pointer.Capture(null);
+	}
+
+	private void OnFileTreeNodePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+	{
+		ResetFileTreeDragState();
+	}
+
+	private void ResetFileTreeDragState()
+	{
+		_fileTreeDragNode = null;
+		_fileTreeDragStart = null;
+	}
+
+	private void OnFileTreeNodeEditingAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+	{
+		if (sender is not TextBox textBox || textBox.DataContext is not FileTreeNodeViewModel node || !node.IsEditing)
+		{
+			return;
+		}
+
+		textBox.Focus();
+		textBox.SelectAll();
+	}
+
+	private void OnFileTreeNodeEditingKeyDown(object? sender, KeyEventArgs e)
+	{
+		if (sender is not Control c || c.DataContext is not FileTreeNodeViewModel node) return;
+		if (e.Key == Key.Enter)
+		{
+			if (node.CommitEditingCommand?.CanExecute(null) == true)
+				node.CommitEditingCommand.Execute(null);
+			e.Handled = true;
+		}
+		else if (e.Key == Key.Escape)
+		{
+			if (node.CancelEditingCommand?.CanExecute(null) == true)
+				node.CancelEditingCommand.Execute(null);
+			e.Handled = true;
+		}
+	}
+
+	private void OnFileTreeNodeEditingLostFocus(object? sender, RoutedEventArgs e)
+	{
+		if (sender is not Control c || c.DataContext is not FileTreeNodeViewModel node) return;
+		if (node.IsEditing && node.CommitEditingCommand?.CanExecute(null) == true)
+			node.CommitEditingCommand.Execute(null);
 	}
 
 	// 防抖：忽略短时间内重复的粘贴触发（可能来自低级钩子与 KeyDown 双重触发）
@@ -845,6 +938,14 @@ public partial class MainView : UserControl
 		{
 			try { await FileDebugWriter?.WriteDebugFileAsync($"HandleDropAsync invoked: {DateTime.Now:o}"); } catch { }
 			try { Console.WriteLine($"[DEBUG] HandleDropAsync invoked: {DateTime.Now:o}"); } catch { }
+
+			var fileTreePath = TryGetFileTreeDragPath(e);
+			if (!string.IsNullOrWhiteSpace(fileTreePath) && File.Exists(fileTreePath))
+			{
+				await InsertFileTreeReferenceAtCaretAsync(fileTreePath).ConfigureAwait(true);
+				return;
+			}
+
 			// Use DataTransfer where available; fall back to deprecated Data for compatibility
 			object? dataObj = e.Data;
 			if (dataObj is null) return;
@@ -993,6 +1094,67 @@ public partial class MainView : UserControl
 		{
 			// ignore
 		}
+	}
+
+	private static string? TryGetFileTreeDragPath(DragEventArgs e)
+	{
+		try
+		{
+			var text = e.DataTransfer.TryGetText();
+			if (!string.IsNullOrWhiteSpace(text) && File.Exists(text))
+				return text;
+		}
+		catch
+		{
+			// ignore
+		}
+		return null;
+	}
+
+	private async Task InsertFileTreeReferenceAtCaretAsync(string absolutePath)
+	{
+		var tb = this.FindControl<TextBox>("EditorTextBox")
+			?? this.FindControl<TextBox>("SplitSourceTextBox")
+			?? this.FindControl<TextBox>("SplitSourceTextBoxV");
+		if (tb is null) return;
+
+		string toInsert;
+		var ext = Path.GetExtension(absolutePath)?.ToLowerInvariant() ?? string.Empty;
+		var imageExts = new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".ico", ".svg" };
+		var relative = absolutePath;
+		try
+		{
+			var root = App.Resolve<Muse.Workspace.IWorkspaceService>().GetState().WorkspaceRoot;
+			if (!string.IsNullOrWhiteSpace(root))
+				relative = Path.GetRelativePath(root, absolutePath).Replace('\\', '/');
+		}
+		catch
+		{
+			relative = Path.GetFileName(absolutePath);
+		}
+
+		if (imageExts.Contains(ext))
+			toInsert = $"![]({relative})";
+		else
+			toInsert = $"[{Path.GetFileNameWithoutExtension(absolutePath)}]({relative})";
+
+		var text = tb.Text ?? string.Empty;
+		var caret = Math.Max(0, Math.Min(text.Length, tb.CaretIndex));
+		var selStart = tb.SelectionStart;
+		var selLength = tb.SelectionEnd - tb.SelectionStart;
+		if (selLength > 0 && selStart >= 0 && selStart <= text.Length)
+		{
+			text = text.Remove(selStart, Math.Min(selLength, text.Length - selStart));
+			caret = Math.Max(0, Math.Min(text.Length, selStart));
+		}
+		text = text.Insert(caret, toInsert);
+		tb.Text = text;
+		tb.CaretIndex = caret + toInsert.Length;
+		if (DataContext is MainViewModel vm)
+		{
+			vm.MarkdownDraft = tb.Text ?? string.Empty;
+		}
+		await Task.CompletedTask.ConfigureAwait(true);
 	}
 
 	private string[]? TryInvokeNoArgMethods(object? data, params string[] names)

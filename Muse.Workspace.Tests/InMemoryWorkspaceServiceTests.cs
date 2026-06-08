@@ -101,6 +101,31 @@ public sealed class InMemoryWorkspaceServiceTests
 	}
 
 	[Fact]
+	public void CloseDocument_ShouldAddToRecentlyClosed()
+	{
+		var root = CreateWorkspaceFixture();
+		try
+		{
+			var service = new InMemoryWorkspaceService();
+			service.OpenWorkspace(root);
+			var opened = service.OpenDocument(Path.Combine(root, "README.md"));
+			Assert.True(opened.Succeeded);
+
+			var closed = service.CloseDocument(opened.Tab!.DocumentId);
+			Assert.True(closed);
+
+			var recentlyClosed = service.GetRecentlyClosed();
+			Assert.Single(recentlyClosed);
+			Assert.Equal(opened.Tab.DocumentId, recentlyClosed[0].FilePath);
+			Assert.Equal("README.md", recentlyClosed[0].FileName);
+		}
+		finally
+		{
+			Directory.Delete(root, true);
+		}
+	}
+
+	[Fact]
 	public void OpenAndActivateDocument_ShouldSwitchActiveTab()
 	{
 		var root = CreateWorkspaceFixture();

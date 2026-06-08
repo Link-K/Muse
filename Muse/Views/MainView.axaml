@@ -106,7 +106,37 @@
 
 		<DataTemplate x:Key="FileTreeNodeTemplate" x:DataType="vm:FileTreeNodeViewModel">
 			<StackPanel Classes="file-row" Spacing="2">
-				<StackPanel Orientation="Horizontal" Spacing="6" DoubleTapped="OnFileTreeNodeDoubleTapped" Tapped="OnFileTreeNodeTapped">
+				<StackPanel Orientation="Horizontal" Spacing="6"
+							DoubleTapped="OnFileTreeNodeDoubleTapped"
+							Tapped="OnFileTreeNodeTapped"
+							PointerPressed="OnFileTreeNodePointerPressed"
+							PointerMoved="OnFileTreeNodePointerMoved"
+							PointerReleased="OnFileTreeNodePointerReleased"
+							PointerCaptureLost="OnFileTreeNodePointerCaptureLost">
+					<StackPanel.ContextMenu>
+						<ContextMenu>
+							<MenuItem Header="新建 Markdown 文件"
+									  Command="{Binding CreateFileCommand}"
+									  CommandParameter="new-doc.md"
+									  IsEnabled="{Binding CanCreate}" />
+							<MenuItem Header="新建文件夹"
+									  Command="{Binding CreateDirectoryCommand}"
+									  CommandParameter="new-folder"
+									  IsEnabled="{Binding CanCreate}" />
+							<Separator />
+							<MenuItem Header="重命名"
+									  Command="{Binding StartEditingCommand}"
+									  IsEnabled="{Binding CanRename}" />
+							<MenuItem Header="删除"
+									  Command="{Binding DeleteCommand}"
+									  IsEnabled="{Binding CanRemove}" />
+							<Separator />
+							<MenuItem Header="在资源管理器中打开"
+									  Command="{Binding OpenInExplorerCommand}" />
+							<MenuItem Header="复制相对路径"
+									  Command="{Binding CopyRelativePathCommand}" />
+						</ContextMenu>
+					</StackPanel.ContextMenu>
 					<TextBlock Width="24" />
 					<TextBlock Text="{Binding IconGlyph}"
 							   FontFamily="{StaticResource IconFontFamily}"
@@ -116,7 +146,14 @@
 							   FontSize="{StaticResource IconSmallSize}" />
 					<TextBlock Text="{Binding Name}"
 							   Foreground="{StaticResource TreeForeground}"
-							   VerticalAlignment="Center" />
+							   VerticalAlignment="Center"
+							   IsVisible="{Binding !IsEditing}" />
+					<TextBox Text="{Binding EditingName, Mode=TwoWay}"
+							 IsVisible="{Binding IsEditing}"
+							 MinWidth="120"
+							 AttachedToVisualTree="OnFileTreeNodeEditingAttachedToVisualTree"
+							 KeyDown="OnFileTreeNodeEditingKeyDown"
+							 LostFocus="OnFileTreeNodeEditingLostFocus" />
 					<!-- open button removed per UX request -->
 				</StackPanel>
 				<ItemsControl ItemsSource="{Binding Children}"
@@ -319,6 +356,25 @@
 						<ItemsControl ItemsSource="{Binding FileTree}"
 									  ItemTemplate="{StaticResource FileTreeNodeTemplate}" />
 					</ScrollViewer>
+					<Expander Grid.Row="2"
+							  Header="最近关闭"
+							  IsExpanded="False"
+							  IsVisible="{Binding HasRecentlyClosedItems}"
+							  Margin="0,8,0,0">
+						<ItemsControl ItemsSource="{Binding RecentlyClosedItems}">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate x:DataType="vm:RecentlyClosedItemViewModel">
+									<StackPanel Orientation="Horizontal" Spacing="4" Opacity="0.7" Margin="0,2">
+										<TextBlock Text="{Binding FileName}" VerticalAlignment="Center" />
+										<Button Content="重新打开"
+												Command="{Binding ReopenCommand}" />
+										<Button Content="移除"
+												Command="{Binding RemoveCommand}" />
+									</StackPanel>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+					</Expander>
 					<!-- 左侧打开标签区域已移除，使用上方顶部标签栏管理打开标签 -->
 				</Grid>
 			</Border>

@@ -10,6 +10,8 @@ using Muse.ViewModels;
 using Avalonia.Controls;
 using Muse.Views;
 using Muse.Services;
+using Muse.Rendering;
+using Muse.Workspace;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Muse;
@@ -69,6 +71,7 @@ public partial class App : Application
 			controlledLifetime.Exit += (_, _) =>
 			{
 				_mainViewModel?.FlushConflictLogPreferencesNow();
+				_mainViewModel?.FlushWorkspaceSession();
 				if (_mainViewModel is not null)
 				{
 					Debug.WriteLine($"[ConflictLogPref] Exit summary attempts={_mainViewModel.DebugConflictLogFlushAttemptCount}, failures={_mainViewModel.DebugConflictLogFlushFailureCount}, lastError={_mainViewModel.DebugLastConflictLogFlushError ?? "none"}");
@@ -85,9 +88,15 @@ public partial class App : Application
 		var services = new ServiceCollection();
 		services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
 		services.AddSingleton<IFileDebugWriter, FileDebugWriter>();
+		services.AddSingleton<IWorkspaceService>(_ => new InMemoryWorkspaceService(enableBackgroundAutoSave: true));
+		services.AddSingleton<IMarkdownPreviewService, MarkdownPreviewService>();
 		// DialogService requires a Window owner; provide a resolver that returns the application's main window when available.
 		services.AddSingleton<IDialogService>(_ => new DialogService(() => (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow as Window));
-		services.AddSingleton<MainViewModel>();
+		services.AddSingleton<MainViewModel>(sp => new MainViewModel(
+			sp.GetRequiredService<IMarkdownPreviewService>(),
+			sp.GetRequiredService<IWorkspaceService>(),
+			enableConflictLogPreferencePersistence: true,
+			dialogService: sp.GetService<IDialogService>()));
 		services.AddSingleton<MainView>();
 
 		return services.BuildServiceProvider();

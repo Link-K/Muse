@@ -76,9 +76,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	public void Dispose()
 	{
 		FlushConflictLogPreferencesNow();
+		FlushWorkspaceSession();
 		_conflictLogPreferenceSaveTimer.Dispose();
 		_conflictLogPreferenceCountdownTimer?.Dispose();
 		_workspaceService.WorkspaceChanged -= HandleWorkspaceChanged;
+	}
+
+	public void FlushWorkspaceSession()
+	{
+		try
+		{
+			_workspaceService.FlushSession();
+		}
+		catch
+		{
+			// silent exit — never block shutdown
+		}
 	}
 
 	internal int DebugConflictLogFlushAttemptCount
@@ -144,8 +157,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	[ObservableProperty]
 	private FileTreeNodeViewModel[] _fileTree = Array.Empty<FileTreeNodeViewModel>();
 
+	private string? _pendingFileTreeEditPath;
+	private string? _pendingFileTreeExpandPath;
+
 	[ObservableProperty]
 	private WorkspaceTabViewModel[] _workspaceTabs = Array.Empty<WorkspaceTabViewModel>();
+
+	[ObservableProperty]
+	private RecentlyClosedItemViewModel[] _recentlyClosedItems = Array.Empty<RecentlyClosedItemViewModel>();
+
+	public bool HasRecentlyClosedItems => RecentlyClosedItems.Length > 0;
 
 	[ObservableProperty]
 	private int _openTabsCount;
@@ -1149,6 +1170,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 	private void HandleWorkspaceChanged(object? sender, EventArgs e)
 	{
 		SyncWorkspaceState();
+		RefreshRecentlyClosed();
 		RefreshConflictEventPresentation();
 
 		var state = _workspaceService.GetState();
@@ -1369,6 +1391,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		OnPropertyChanged(nameof(ActiveDocumentConflictText));
 		OnPropertyChanged(nameof(HasActiveDocumentConflict));
 		OnPropertyChanged(nameof(WorkspaceSummary));
+		ApplyPendingFileTreeEdit();
 	}
 
 	private FileTreeNodeViewModel[] CreateTreeViewModels(IReadOnlyList<Muse.Workspace.FileTreeNode> nodes, HashSet<string>? expandedPaths = null)
@@ -1376,27 +1399,205 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 		var list = new List<FileTreeNodeViewModel>(nodes.Count);
 		foreach (var n in nodes)
 		{
-			var vm = new FileTreeNodeViewModel(n.Path, n.Name, n.IsDirectory, OpenFileNodeFromViewModel);
-			// restore expanded state if previously recorded
-			if (expandedPaths != null && expandedPaths.Contains(n.Path))
-			{
-				vm.IsExpanded = true;
-			}
-			if (n.Children != null && n.Children.Count > 0)
-			{
-				// recursively add children
-				foreach (var c in n.Children)
-				{
-					var childVms = CreateTreeViewModels(new[] { c }, expandedPaths);
-					foreach (var cv in childVms)
-					{
-						vm.Children.Add(cv);
-					}
-				}
-			}
-			list.Add(vm);
+			list.Add(ToFileTreeViewModel(n, expandedPaths));
 		}
 		return list.ToArray();
+	}
+
+	private FileTreeNodeViewModel ToFileTreeViewModel(Muse.Workspace.FileTreeNode node, HashSet<string>? expandedPaths = null)
+	{
+		var vm = new FileTreeNodeViewModel(
+			node.Path,
+			node.Name,
+			node.IsDirectory,
+			OpenFileNodeFromViewModel,
+			HandleCreateNode,
+			HandleRenameNode,
+			HandleRemoveNode,
+			HandleMoveNode,
+			HandleCloseAndRemove,
+			HandleCopyRelativePath,
+			HandleFileTreeCancelEditing);
+		if (expandedPaths != null && expandedPaths.Contains(node.Path))
+		{
+			vm.IsExpanded = true;
+		}
+		if (node.Children is { Count: > 0 })
+		{
+			foreach (var child in node.Children)
+			{
+				vm.Children.Add(ToFileTreeViewModel(child, expandedPaths));
+			}
+		}
+		return vm;
+	}
+
+	private WorkspaceMutationResult HandleCreateNode(string parentPath, string name, bool isDirectory)
+	{
+		var result = _workspaceService.CreateNode(parentPath, name, isDirectory);
+		if (result.Succeeded && !string.IsNullOrWhiteSpace(result.AffectedPath))
+		{
+			_pendingFileTreeEditPath = result.AffectedPath;
+			_pendingFileTreeExpandPath = parentPath;
+			ApplyPendingFileTreeEdit();
+		}
+		return result;
+	}
+
+	private void ApplyPendingFileTreeEdit()
+	{
+		if (string.IsNullOrWhiteSpace(_pendingFileTreeEditPath))
+		{
+			return;
+		}
+
+		if (!string.IsNullOrWhiteSpace(_pendingFileTreeExpandPath))
+		{
+			ExpandFileTreePath(FileTree, _pendingFileTreeExpandPath);
+		}
+
+		var node = FindFileTreeNode(FileTree, _pendingFileTreeEditPath);
+		node?.BeginRename();
+	}
+
+	private void ClearPendingFileTreeEdit()
+	{
+		_pendingFileTreeEditPath = null;
+		_pendingFileTreeExpandPath = null;
+	}
+
+	private void HandleFileTreeCancelEditing(FileTreeNodeViewModel vm)
+	{
+		if (string.Equals(vm.Path, _pendingFileTreeEditPath, StringComparison.OrdinalIgnoreCase))
+		{
+			ClearPendingFileTreeEdit();
+		}
+	}
+
+	private static FileTreeNodeViewModel? FindFileTreeNode(IEnumerable<FileTreeNodeViewModel> roots, string path)
+	{
+		foreach (var node in roots)
+		{
+			if (string.Equals(node.Path, path, StringComparison.OrdinalIgnoreCase))
+			{
+				return node;
+			}
+
+			var child = FindFileTreeNode(node.Children, path);
+			if (child is not null)
+			{
+				return child;
+			}
+		}
+
+		return null;
+	}
+
+	private static bool ExpandFileTreePath(IEnumerable<FileTreeNodeViewModel> roots, string targetPath)
+	{
+		foreach (var node in roots)
+		{
+			if (string.Equals(node.Path, targetPath, StringComparison.OrdinalIgnoreCase))
+			{
+				if (node.IsDirectory)
+				{
+					node.IsExpanded = true;
+				}
+				return true;
+			}
+
+			if (!node.IsDirectory)
+			{
+				continue;
+			}
+
+			if (ExpandFileTreePath(node.Children, targetPath))
+			{
+				node.IsExpanded = true;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private WorkspaceMutationResult HandleRenameNode(string path, string newName)
+	{
+		var result = _workspaceService.RenameNode(path, newName);
+		if (result.Succeeded
+			&& !string.IsNullOrWhiteSpace(_pendingFileTreeEditPath)
+			&& string.Equals(path, _pendingFileTreeEditPath, StringComparison.OrdinalIgnoreCase))
+		{
+			ClearPendingFileTreeEdit();
+		}
+		return result;
+	}
+
+	private WorkspaceMutationResult HandleRemoveNode(string path)
+		=> _workspaceService.RemoveNode(path);
+
+	private WorkspaceMutationResult HandleMoveNode(string sourcePath, string targetDir)
+		=> _workspaceService.MoveNode(sourcePath, targetDir);
+
+	private WorkspaceMutationResult HandleCloseAndRemove(string path)
+		=> _workspaceService.CloseAndRemove(path);
+
+	private bool HandleCopyRelativePath(string path)
+	{
+		try
+		{
+			var root = _workspaceService.GetState().WorkspaceRoot;
+			if (string.IsNullOrWhiteSpace(root)) return false;
+			var relative = Path.GetRelativePath(root, path).Replace('\\', '/');
+			var clipboard = App.ServiceProvider?.GetService(typeof(Muse.Services.IClipboardService)) as Muse.Services.IClipboardService;
+			if (clipboard is null) return false;
+			_ = clipboard.SetTextAsync(relative);
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private void RefreshRecentlyClosed()
+	{
+		var list = _workspaceService.GetRecentlyClosed();
+		RecentlyClosedItems = list.Select(entry =>
+		{
+			var filePath = entry.FilePath;
+			return new RecentlyClosedItemViewModel(
+				filePath,
+				entry.FileName,
+				new ActionCommand(() => ReopenRecentlyClosed(filePath)),
+				new ActionCommand(() => RemoveRecentlyClosed(filePath)));
+		}).ToArray();
+		OnPropertyChanged(nameof(HasRecentlyClosedItems));
+	}
+
+	[RelayCommand]
+	private void ReopenRecentlyClosed(string? filePath)
+	{
+		if (string.IsNullOrWhiteSpace(filePath)) return;
+		if (File.Exists(filePath))
+		{
+			_workspaceService.OpenDocument(filePath);
+			_workspaceService.RemoveFromRecentlyClosed(filePath);
+			RefreshRecentlyClosed();
+		}
+		else
+		{
+			SaveFeedbackIsError = true;
+			SaveFeedbackMessage = "文件已不存在，无法重新打开。";
+		}
+	}
+
+	[RelayCommand]
+	private void RemoveRecentlyClosed(string? filePath)
+	{
+		if (string.IsNullOrWhiteSpace(filePath)) return;
+		_workspaceService.RemoveFromRecentlyClosed(filePath);
+		RefreshRecentlyClosed();
 	}
 
 	private void CollectExpandedPaths(FileTreeNodeViewModel vm, HashSet<string> dest)

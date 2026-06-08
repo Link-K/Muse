@@ -92,6 +92,26 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	}
 
 	[Fact]
+	public void RecentlyClosedItems_ShouldBePopulatedAfterCloseTab()
+	{
+		var preview = new FakePreviewService();
+		var state = new WorkspaceState(
+			"D:/repo",
+			[],
+			[new WorkspaceTabState("doc-1", "D:/repo/files/a.md", false, DateTimeOffset.UtcNow)],
+			"doc-1");
+		var workspace = new FakeWorkspaceService(state);
+		var viewModel = new MainViewModel(preview, workspace);
+
+		viewModel.CloseTabCommand.Execute("doc-1");
+
+		Assert.True(viewModel.HasRecentlyClosedItems);
+		Assert.Single(viewModel.RecentlyClosedItems);
+		Assert.Equal("D:/repo/files/a.md", viewModel.RecentlyClosedItems[0].FilePath);
+		Assert.Equal("a.md", viewModel.RecentlyClosedItems[0].FileName);
+	}
+
+	[Fact]
 	public void OpenCurrentWorkspaceCommand_ShouldRefreshWorkspaceSummary()
 	{
 		var preview = new FakePreviewService();
@@ -419,6 +439,76 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 	}
 
 	[Fact]
+	public void CreateFile_ShouldEnterRenameStateForNewNode()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-FileTreeCreateFile-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+		Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
+		File.WriteAllText(Path.Combine(tempRoot, "README.md"), "# readme");
+
+		try
+		{
+			var workspace = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
+			var viewModel = new MainViewModel(preview, workspace);
+			viewModel.OpenWorkspaceAt(tempRoot);
+
+			Assert.NotEmpty(viewModel.FileTree);
+			var rootNode = viewModel.FileTree[0];
+			Assert.True(rootNode.IsDirectory);
+
+			rootNode.CreateFileCommand.Execute("new-doc.md");
+
+			var created = FindFileTreeNode(viewModel.FileTree, node => node.Name == "new-doc.md");
+			Assert.NotNull(created);
+			Assert.True(created!.IsEditing);
+			Assert.Equal("new-doc.md", created.EditingName);
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
+	[Fact]
+	public void CreateDirectory_ShouldEnterRenameStateForNewFolder()
+	{
+		var preview = new FakePreviewService();
+		var tempRoot = Path.Combine(Path.GetTempPath(), "Muse-FileTreeCreateDir-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempRoot);
+		Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
+		File.WriteAllText(Path.Combine(tempRoot, "README.md"), "# readme");
+
+		try
+		{
+			var workspace = new InMemoryWorkspaceService(enableBackgroundAutoSave: false);
+			var viewModel = new MainViewModel(preview, workspace);
+			viewModel.OpenWorkspaceAt(tempRoot);
+
+			Assert.NotEmpty(viewModel.FileTree);
+			var rootNode = viewModel.FileTree[0];
+			Assert.True(rootNode.IsDirectory);
+
+			rootNode.CreateDirectoryCommand.Execute("new-folder");
+
+			var created = FindFileTreeNode(viewModel.FileTree, node => node.IsDirectory && node.Name == "new-folder");
+			Assert.NotNull(created);
+			Assert.True(created!.IsEditing);
+			Assert.Equal("new-folder", created.EditingName);
+		}
+		finally
+		{
+			if (Directory.Exists(tempRoot))
+			{
+				Directory.Delete(tempRoot, true);
+			}
+		}
+	}
+
+	[Fact]
 	public void FileTree_ExpandedState_ShouldBePreservedAcrossWorkspaceRefresh()
 	{
 		var preview = new FakePreviewService();
@@ -734,6 +824,27 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		}
 	}
 
+	private static FileTreeNodeViewModel? FindFileTreeNode(
+		IEnumerable<FileTreeNodeViewModel> roots,
+		Func<FileTreeNodeViewModel, bool> predicate)
+	{
+		foreach (var node in roots)
+		{
+			if (predicate(node))
+			{
+				return node;
+			}
+
+			var child = FindFileTreeNode(node.Children, predicate);
+			if (child is not null)
+			{
+				return child;
+			}
+		}
+
+		return null;
+	}
+
 	private static bool WaitForConflictLogPreferences(string settingsPath, bool expectedScope, string expectedFilter, int timeoutMs = 5000)
 	{
 		var sw = Stopwatch.StartNew();
@@ -800,6 +911,8 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 
 		public List<ConflictEvent> ConflictEvents { get; } = [];
 
+		public List<RecentlyClosedEntry> RecentlyClosed { get; } = [];
+
 		public WorkspaceState OpenWorkspace(string rootPath)
 		{
 			if (_openWorkspaceStates.Count > 0)
@@ -829,7 +942,9 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 			var tabs = _state.OpenTabs.ToList();
 			var index = tabs.FindIndex(t => t.DocumentId == documentId);
 			if (index < 0) return false;
+			var closedTab = tabs[index];
 			tabs.RemoveAt(index);
+			RecentlyClosed.Add(new RecentlyClosedEntry(closedTab.FilePath, closedTab.FileName, DateTimeOffset.UtcNow, null));
 			_state = _state with { OpenTabs = tabs, ActiveDocumentId = tabs.Count > 0 ? tabs[Math.Max(0, index - 1)].DocumentId : null };
 			RaiseWorkspaceChanged();
 			return true;
@@ -1019,7 +1134,10 @@ public sealed class MainViewModelWorkspaceIntegrationTests
 		public void FlushSession() { }
 		public void InvalidateSession() { }
 		public IReadOnlyList<RecentlyClosedEntry> GetRecentlyClosed()
-			=> Array.Empty<RecentlyClosedEntry>();
-		public void RemoveFromRecentlyClosed(string path) { }
+			=> RecentlyClosed.ToArray();
+		public void RemoveFromRecentlyClosed(string path)
+		{
+			RecentlyClosed.RemoveAll(entry => string.Equals(entry.FilePath, path, StringComparison.OrdinalIgnoreCase));
+		}
 	}
 }

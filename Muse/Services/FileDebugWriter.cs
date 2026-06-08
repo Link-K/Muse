@@ -25,8 +25,7 @@ namespace Muse.Services
 				var debugDirectory = ResolveDebugDirectory();
 				Directory.CreateDirectory(debugDirectory);
 				var outPath = Path.Combine(debugDirectory, DefaultFileName);
-				var line = $"{DateTimeOffset.Now:O} {content.Replace("\r", "\\r").Replace("\n", "\\n")}\n";
-				await File.AppendAllTextAsync(outPath, line).ConfigureAwait(false);
+				await File.WriteAllTextAsync(outPath, content).ConfigureAwait(false);
 				return outPath;
 			}
 			catch
